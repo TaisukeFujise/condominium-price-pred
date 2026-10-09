@@ -89,7 +89,7 @@ def build_features(df):
 
 - 文字列のカテゴリ列を足すときは、`make` の中で `.astype("category")` にしておく（LightGBM が種類ごとに分岐するようになる）
 - `df` には train と test の両方が入っている（`is_train` 列で見分ける）
-- 「地区ごとの平均価格」のように価格（答え）を使う特徴量は、ここに書くとリークする。理由と正しい作り方は [`workflow.md`](workflow.md) の「価格を使う特徴量」
+- 価格を使う特徴量（target encoding など）はここでは作れない。理由は [`workflow.md`](workflow.md) の「価格を使う特徴量」
 
 ## ルール
 
