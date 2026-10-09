@@ -59,12 +59,44 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 
 ## 使い方
 
+### スクリプト
+
 ```bash
-uv run python <script>.py   # スクリプト実行
-uv run jupyter lab          # Jupyter Lab を起動
+uv run python <script>.py
 ```
 
-VS Code / Cursor でノートブックを使う場合は、カーネルに `.venv/bin/python` を選択する。
+### ノートブック（VS Code / Cursor）
+
+1. `uv sync` を済ませておく（`.venv/` ができていればよい）
+2. `notebooks/` の `.ipynb` を開く
+3. 右上の「カーネルを選択」→「Python 環境」を選ぶ
+4. 一覧から次の環境を選ぶ（★ が付いていることが多い）
+
+   ```
+   condominium-resale-price-pred (3.12.x)   .venv/bin/python
+   ```
+
+   - `/opt/homebrew/bin/python3` や `/usr/bin/python3` は PC 全体の Python で、パッケージが入っていない
+   - 「Python 環境の作成」は選ばない（`.venv` が二重にできる）
+5. 右上に `condominium-resale-price-pred (3.12.x)` と表示されれば OK。次回からは自動で選ばれる
+
+一覧に出ないときは、パスを直接指定する。
+
+1. コマンドパレット（`Cmd+Shift+P`）で「Python: インタープリターを選択」を開く
+2. 「インタープリター パスを入力」で `.venv/bin/python` を指定する
+
+### ノートブック（ブラウザ）
+
+```bash
+uv run jupyter lab
+```
+
+この方法では `.venv` の環境が自動で使われるので、カーネルの選択は不要。
+
+### ノートブックでの注意
+
+- パッケージが足りないときは、ノートブック内で `!pip install` を使わない。ターミナルで `uv add <package>` を実行し、カーネルを再起動する
+- データは `../utokyo-mlapp-2026-ex1/train.csv` のように、ノートブックからの相対パスで読む
 
 ## パッケージの追加・削除
 
