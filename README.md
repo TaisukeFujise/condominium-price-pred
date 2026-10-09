@@ -31,26 +31,31 @@ uv run python main.py
 
 `Python: 3.12.x` と、`.venv/bin/python3` のパスが表示されれば OK。
 
-### 3. Kaggle の認証
+## データ
 
-1. Kaggle の [Settings](https://www.kaggle.com/settings) → **API** → **Create New Token** で `kaggle.json` をダウンロード
-2. 配置する
+コンペのデータはリポジトリに含まれている（`utokyo-mlapp-2026-ex1/`）。clone すればそのまま使える。
 
-```bash
-mkdir -p ~/.kaggle
-mv ~/Downloads/kaggle.json ~/.kaggle/
-chmod 600 ~/.kaggle/kaggle.json
-```
+- `train.csv` / `test.csv` / `sample_submission.csv`
+- 各カラムの値のまとめ: [`docs/columns.md`](docs/columns.md)
 
-3. コンペページでルールに同意（Join Competition）しておく
+補足：Kaggle から取り直す場合は `uv run python download_data.py` を実行する。事前に次の準備が必要。
 
-### 4. データのダウンロード
+1. [Settings](https://www.kaggle.com/settings) で API トークンを発行する
+2. `uv run python -c "import kagglehub; kagglehub.login()"` でトークンを登録する
+3. コンペのルールに同意する
 
-```bash
-uv run python download_data.py
-```
+## uv とは
 
-ダウンロード先のパスが表示される。
+Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理するツール。pyenv + venv + pip の役割を 1 つでこなし、pip よりかなり速い。
+
+| ファイル | 役割 | git |
+|---|---|---|
+| `pyproject.toml` | 使うパッケージの一覧（`uv add` が自動で書く） | コミットする |
+| `uv.lock` | 依存も含めた全パッケージの正確なバージョン（自動生成） | コミットする |
+| `.python-version` | 使う Python のバージョン | コミットする |
+| `.venv/` | 実際にパッケージが入る場所（`uv sync` / `uv run` が自動で作る） | コミットしない |
+
+この 3 ファイルがあれば、誰の PC でも `uv sync` で同じ環境が再現できる。`requirements.txt` は使わない（`uv.lock` が同じ役割）。
 
 ## 使い方
 
@@ -69,9 +74,13 @@ uv add --dev <package>      # 開発用ツールとして追加
 uv remove <package>         # 削除
 ```
 
-`pip install` は使わず、必ず `uv add` で追加する。変更した `pyproject.toml` と `uv.lock` はコミットする。
+変更した `pyproject.toml` と `uv.lock` はコミットする。他の人は `git pull` のあと `uv sync` すれば同じパッケージが入る。
+
+補足（pip に慣れている人向け）：`pip install` の代わりに `uv add` を使う。pip で入れたパッケージは `pyproject.toml` に記録されず、他の人の環境に入らない。`pip freeze` や `source .venv/bin/activate` も不要。
 
 ## トラブルシューティング
 
-- **LightGBM の import で `libomp` エラー（macOS）**: `brew install libomp`
-- **環境がおかしくなった**: `rm -rf .venv && uv sync`
+| 症状 | 対処 |
+|---|---|
+| LightGBM の import で `libomp` エラー（macOS） | `brew install libomp` |
+| 環境がおかしくなった | `rm -rf .venv && uv sync` |
