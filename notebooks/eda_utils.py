@@ -1,6 +1,6 @@
 """EDA 用の共通処理。ノートブックから `from eda_utils import load, setup_plot` で使う。
 
-ここでの変換は EDA で見やすくするためのもの。モデルの前処理とは別。
+データは元の値のまま読み込む。数値への変換などは、各ノートブックで必要に応じて行う。
 """
 
 from pathlib import Path
@@ -28,36 +28,12 @@ def setup_plot() -> None:
 
 
 def load() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """train と test を読み込み、EDA でよく使う列を足す。
-
-    足す列:
-        時期: "2019Q1" の形の文字列（並べ替えると時間順になる）
-        取引年, 取引四半期, 面積_数値, 建築年_数値, 築年数, 駅距離_分: 文字列の列を数値にしたもの
-        ㎡単価: 価格 ÷ 面積（train のみ）
+    """train と test を元の値のまま読み込む。
 
     Returns:
         train と test。
     """
+    # 面積は "45" と "2,000㎡以上" が混ざっていて、数値と文字列が混在した列になるので、文字列でそろえる
     train = pd.read_csv(DATA_DIR / "train.csv", dtype={"面積（㎡）": str})
     test = pd.read_csv(DATA_DIR / "test.csv", dtype={"面積（㎡）": str})
-
-    for df in (train, test):
-        period = df["取引時期"].str.extract(r"(\d{4})年第(\d)四半期").astype(int)
-        df["取引年"] = period[0]
-        df["取引四半期"] = period[1]
-        df["時期"] = df["取引年"].astype(str) + "Q" + df["取引四半期"].astype(str)
-        df["面積_数値"] = pd.to_numeric(
-            df["面積（㎡）"].replace("2,000㎡以上", "2000"), errors="coerce"
-        )
-        df["建築年_数値"] = pd.to_numeric(
-            df["建築年"].str.replace("年", "").replace("戦前", "1945"),
-            errors="coerce",
-        )
-        df["築年数"] = df["取引年"] - df["建築年_数値"]
-        distance_map = {"30分～60分": 45, "1H～1H30": 75, "1H30～2H": 105, "2H～": 120}
-        df["駅距離_分"] = pd.to_numeric(
-            df["最寄駅：距離（分）"].replace(distance_map), errors="coerce"
-        )
-
-    train["㎡単価"] = train[TARGET] / train["面積_数値"]
     return train, test
