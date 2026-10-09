@@ -4,7 +4,7 @@ EDA や試行のためのノートブックを置く場所。開き方（カー�
 
 ## 使い方
 
-各自 `<名前>_eda.ipynb` を作り、自由に可視化・分析する。最初のセルで `eda_utils` を使ってデータを読み込む（`fujise_eda.ipynb` を参照）。
+各自 `<名前>_eda.ipynb` を作り、自由に可視化・分析する。最初のセルは `fujise_eda.ipynb` からコピーするとよい。
 
 ## ルール
 
@@ -13,13 +13,18 @@ EDA や試行のためのノートブックを置く場所。開き方（カー�
 - 出力（グラフ）は残したままコミットする
 - 分かったことは Issue に書く
 
-## eda_utils.py
+## 最初のセル
 
 ```python
-from eda_utils import TARGET, load, setup_plot
+import matplotlib.pyplot as plt
+import matplotlib_fontja  # グラフで日本語を表示する
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
-setup_plot()  # グラフで日本語が表示されるようにする
-train, test = load()  # train と test を元の値のまま読み込む
+train = pd.read_csv("../utokyo-mlapp-2026-ex1/train.csv", dtype={"面積（㎡）": str})
+test = pd.read_csv("../utokyo-mlapp-2026-ex1/test.csv", dtype={"面積（㎡）": str})
 ```
 
-数値への変換（「戦前」「30分～60分」「2,000㎡以上」などの扱い）や㎡単価などは、各ノートブックで必要に応じて作る。良い変換が見つかったら、モデルの前処理に PR で入れる。
+- データは元の値のまま読み込む。数値への変換（「戦前」「30分～60分」「2,000㎡以上」などの扱い）や㎡単価などは、必要に応じて各自で作る。良い変換が見つかったら、モデルの前処理に PR で入れる
+- `matplotlib_fontja` を import すると、OS に関係なくグラフで日本語が表示される。`sns.set_theme()` を使うとフォントの設定が消えるので、使ったら `matplotlib_fontja.japanize()` を呼ぶ
