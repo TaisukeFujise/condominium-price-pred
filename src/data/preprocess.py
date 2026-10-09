@@ -23,7 +23,11 @@ CATEGORICAL_COLS = [
 
 
 def load() -> pd.DataFrame:
-    """train と test を連結し、前処理した 1 つの表を返す。is_train 列で見分ける。"""
+    """train と test を読み込み、前処理して 1 つの表にする。
+
+    Returns:
+        train と test を連結した表。is_train 列（train なら True）で見分ける。
+    """
     # 面積は "45" と "2,000㎡以上" が混ざっているので、いったん文字列として読む
     train = pd.read_csv(DATA_DIR / "train.csv", dtype={"面積（㎡）": str})
     test = pd.read_csv(DATA_DIR / "test.csv", dtype={"面積（㎡）": str})

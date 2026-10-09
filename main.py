@@ -6,6 +6,7 @@ CV が良くなったら PR を出す（docs/experiment-guide.md）。
 実行: uv run python main.py
 """
 
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
@@ -16,11 +17,27 @@ from src.features import build_features
 from src.model import ensemble, lgbm, postprocess, target
 
 
-def train_and_predict(train, rows, features, num_boost_round=None, valid=None):
-    """学習データの選択から後処理までを通して、rows の価格（円）を予測する。
+def train_and_predict(
+    train: pd.DataFrame,
+    rows: pd.DataFrame,
+    features: list[str],
+    num_boost_round: int | None = None,
+    valid: pd.DataFrame | None = None,
+) -> tuple[np.ndarray, lgb.Booster]:
+    """学習データの選択から後処理までを通して、価格を予測する。
 
     valid を渡すと CV 用（early stopping で木の本数を決める）、
     num_boost_round を渡すと本番用（その本数で学習する）。
+
+    Args:
+        train: 学習データ。
+        rows: 予測する行。
+        features: モデルに入れる列名の一覧。
+        num_boost_round: 本番用の木の本数。
+        valid: CV 用の検証データ。
+
+    Returns:
+        rows の予測価格（円）と、学習済みのモデル。
     """
     train, weight = selection.select(train)
     y = target.make_target(train)

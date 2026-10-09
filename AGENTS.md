@@ -25,6 +25,12 @@
 - `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/data/`（前処理・学習データの選択）、`src/features/`（特徴量）、`src/model/`（目的変数・モデル・パラメータ・アンサンブル・後処理）
 - `submissions/` は git の管理外
 
+## コードの書き方
+
+- 関数の引数と戻り値には型ヒントを書く（例：`def make(df: pd.DataFrame) -> pd.DataFrame:`）
+- docstring は Google スタイルで書く。1 行目に何をするかを 1 文で書き、引数があれば `Args:`、戻り値があれば `Returns:` を書く。引数の型は型ヒントに書き、docstring では繰り返さない
+- コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く
+
 ## 実験のルール
 
 手順と書き方の詳細は `docs/experiment-guide.md`、検証方法の理由と見直しの手順は `docs/validation.md`、精度改善の工程と打ち手は `docs/workflow.md`。

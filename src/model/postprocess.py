@@ -9,5 +9,14 @@ import pandas as pd
 
 
 def postprocess(price: np.ndarray, rows: pd.DataFrame, train: pd.DataFrame) -> np.ndarray:
-    """rows は予測した行、train はそのときの学習データ。今は何もしない。"""
+    """予測した価格を補正する。今は何もしない。
+
+    Args:
+        price: 予測した価格（円）。
+        rows: 予測した行。
+        train: そのときの学習データ。補正に使ってよいのはこれだけ。
+
+    Returns:
+        補正した価格（円）。
+    """
     return price

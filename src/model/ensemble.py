@@ -7,4 +7,12 @@ import numpy as np
 
 
 def blend(preds: list[np.ndarray]) -> np.ndarray:
+    """複数モデルの予測を平均する。
+
+    Args:
+        preds: モデルごとの予測（円）。
+
+    Returns:
+        混ぜた予測（円）。
+    """
     return np.mean(preds, axis=0)

@@ -22,7 +22,14 @@ VALID_QUARTERS = 3
 
 
 def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]]:
-    """(学習に使う行番号, 検証に使う行番号) の組を、新しい期間の fold から順に返す。"""
+    """時系列 CV の fold を作る。
+
+    Args:
+        train: 学習データ。経過四半期の列が必要。
+
+    Returns:
+        (学習に使う行番号, 検証に使う行番号) の組の一覧。新しい期間の fold から順に並ぶ。
+    """
     quarter = train["経過四半期"]
     last = quarter.max()
     folds = []
@@ -36,12 +43,27 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
 
 
 def rmsle(price_true: np.ndarray, price_pred: np.ndarray) -> float:
-    """円の価格どうしで RMSLE を計算する（コンペの評価指標）。"""
+    """RMSLE（コンペの評価指標）を計算する。
+
+    Args:
+        price_true: 正解の価格（円）。
+        price_pred: 予測した価格（円）。
+
+    Returns:
+        RMSLE。小さいほど良い。
+    """
     diff = np.log1p(np.asarray(price_pred)) - np.log1p(np.asarray(price_true))
     return float(np.sqrt(np.mean(diff**2)))
 
 
 def describe_period(rows: pd.DataFrame) -> str:
-    """行の取引時期の範囲を "2024Q4〜2025Q2" の形で返す。"""
+    """取引時期の範囲を表示用の文字列にする。
+
+    Args:
+        rows: 取引年・取引四半期の列を含む行。
+
+    Returns:
+        "2024Q4〜2025Q2" の形の文字列。
+    """
     quarters = (rows["取引年"].astype(str) + "Q" + rows["取引四半期"].astype(str)).sort_values()
     return f"{quarters.iloc[0]}〜{quarters.iloc[-1]}"
