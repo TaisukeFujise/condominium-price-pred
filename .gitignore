@@ -7,9 +7,9 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Data / outputs
-data/
-*.csv
-submissions/
+# data/
+# *.csv
+# submissions/
 
 # OS / editor
 .DS_Store
