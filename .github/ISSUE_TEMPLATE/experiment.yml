@@ -1,0 +1,43 @@
+name: 実験・タスク
+description: 精度改善のために試したいこと、やるべきこと
+title: "[実験] "
+labels: ["実験"]
+body:
+  - type: dropdown
+    id: step
+    attributes:
+      label: 工程
+      description: どの工程を変えるか（docs/workflow.md）
+      options:
+        - 0. データ理解（EDA）
+        - 1. 前処理
+        - 2. 特徴量
+        - 3. 学習データの選択
+        - 4. 目的変数
+        - 5. モデル
+        - 6. パラメータ
+        - 7. アンサンブル
+        - 8. 後処理
+        - 実験以外（環境・ドキュメントなど）
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: やること
+      description: 何を試すか、何を作るか
+      placeholder: 例）地区ごとの平均㎡単価を特徴量に足す
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: なぜ効くと思うか
+      description: 仮説や根拠。データを見て気づいたことなど
+      placeholder: 例）重要度の上位に市区町村名・地区名があり、場所の価格水準が効いていそう
+  - type: textarea
+    id: done
+    attributes:
+      label: 終わりの条件
+      description: 何ができたら閉じるか
+      placeholder: 例）CV を main と比べ、採用・不採用を判断して PR を出す
