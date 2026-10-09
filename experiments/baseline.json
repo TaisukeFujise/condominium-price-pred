@@ -1,0 +1,58 @@
+{
+  "exp_id": "baseline",
+  "description": "main.py と同じ特徴量・パラメータ",
+  "cv_rmsle": 0.2067379941984612,
+  "lb_public": null,
+  "validation_version": "v1",
+  "folds": [
+    {
+      "fold": 0,
+      "valid_period": "2024Q4〜2025Q2",
+      "rmsle": 0.21430905364935784,
+      "best_iteration": 896
+    },
+    {
+      "fold": 1,
+      "valid_period": "2024Q1〜2024Q3",
+      "rmsle": 0.2032997258609952,
+      "best_iteration": 942
+    },
+    {
+      "fold": 2,
+      "valid_period": "2023Q2〜2023Q4",
+      "rmsle": 0.20260520308503058,
+      "best_iteration": 651
+    }
+  ],
+  "num_boost_round": 830,
+  "features": [
+    "経過四半期",
+    "取引四半期",
+    "建築年_数値",
+    "築年数",
+    "駅距離_分",
+    "面積_数値",
+    "建ぺい率（％）",
+    "容積率（％）",
+    "価格情報区分",
+    "市区町村名",
+    "地区名",
+    "最寄駅：名称",
+    "間取り",
+    "建物の構造",
+    "用途",
+    "今後の利用目的",
+    "都市計画",
+    "改装",
+    "取引の事情等"
+  ],
+  "params": {
+    "objective": "regression",
+    "metric": "rmse",
+    "seed": 42,
+    "verbose": -1
+  },
+  "git_commit": "b311e96fceb350e877f3b9d43c8069bfe5a834f7",
+  "git_dirty": false,
+  "created_at": "2026-10-10T01:33:29"
+}
