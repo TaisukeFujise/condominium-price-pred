@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data / outputs
+data/
+*.csv
+submissions/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
