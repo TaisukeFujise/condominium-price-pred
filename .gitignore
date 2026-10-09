@@ -9,7 +9,11 @@ __pycache__/
 # Data / outputs
 # data/
 # *.csv
-# submissions/
+submissions/
+
+# 外部データの生ダウンロード（容量が大きい・再ダウンロードで再現可能なためコミットしない）
+# 加工済みの my_project/external_data/*.csv はコミット対象
+external_data/raw/
 
 # OS / editor
 .DS_Store
