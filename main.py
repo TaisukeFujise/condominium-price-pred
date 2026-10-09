@@ -1,7 +1,7 @@
-"""学習から提出ファイルの作成までの流れ。各工程の中身は src/step*.py にある。
+"""学習から提出ファイルの作成までの流れ。各工程の中身は src/ にある。
 
-工程の番号は docs/workflow.md と同じ。精度改善は、該当する工程のファイルを直して
-このファイルを実行し、CV が良くなったら PR を出す（docs/experiment-guide.md）。
+精度改善は、該当する工程のファイルを直してこのファイルを実行し、
+CV が良くなったら PR を出す（docs/experiment-guide.md）。
 
 実行: uv run python main.py
 """
@@ -9,42 +9,36 @@
 import numpy as np
 import pandas as pd
 
-from src import (
-    step1_preprocess,
-    step2_features,
-    step3_selection,
-    step4_target,
-    step5_model,
-    step7_ensemble,
-    step8_postprocess,
-    validation,
-)
+from src import validation
 from src.config import SUBMISSION_DIR, TARGET
+from src.data import preprocess, selection
+from src.features import build_features
+from src.model import ensemble, lgbm, postprocess, target
 
 
 def train_and_predict(train, rows, features, num_boost_round=None, valid=None):
-    """工程 3〜8 を通して、rows の価格（円）を予測する。
+    """学習データの選択から後処理までを通して、rows の価格（円）を予測する。
 
     valid を渡すと CV 用（early stopping で木の本数を決める）、
     num_boost_round を渡すと本番用（その本数で学習する）。
     """
-    train, weight = step3_selection.select(train)
-    y = step4_target.make_target(train)
+    train, weight = selection.select(train)
+    y = target.make_target(train)
     if valid is not None:
-        model = step5_model.fit_with_validation(
-            train[features], y, valid[features], step4_target.make_target(valid), weight
+        model = lgbm.fit_with_validation(
+            train[features], y, valid[features], target.make_target(valid), weight
         )
     else:
-        model = step5_model.fit(train[features], y, num_boost_round, weight)
-    price = step4_target.to_price(step5_model.predict(model, rows[features]), rows)
-    price = step7_ensemble.blend([price])
-    price = step8_postprocess.postprocess(price, rows, train)
+        model = lgbm.fit(train[features], y, num_boost_round, weight)
+    price = target.to_price(lgbm.predict(model, rows[features]), rows)
+    price = ensemble.blend([price])
+    price = postprocess.postprocess(price, rows, train)
     return price, model
 
 
-# 工程 1・2：前処理と特徴量（train と test をまとめて処理する）
-df = step1_preprocess.load()
-df, features = step2_features.build(df)
+# 前処理と特徴量（train と test をまとめて処理する）
+df = preprocess.load()
+df, features = build_features(df)
 train = df[df["is_train"]].reset_index(drop=True)
 test = df[~df["is_train"]].reset_index(drop=True)
 
@@ -55,7 +49,7 @@ for i, (train_idx, valid_idx) in enumerate(validation.time_series_folds(train)):
     price, model = train_and_predict(fold_train, fold_valid, features, valid=fold_valid)
     score = validation.rmsle(fold_valid[TARGET], price)
     scores.append(score)
-    best_iterations.append(step5_model.best_iteration(model))
+    best_iterations.append(lgbm.best_iteration(model))
     print(
         f"fold {i}（検証 {validation.describe_period(fold_valid)}）: "
         f"RMSLE {score:.5f}（best_iteration={best_iterations[-1]}）"
@@ -68,7 +62,7 @@ num_boost_round = int(round(np.mean(best_iterations)))
 price, model = train_and_predict(train, test, features, num_boost_round=num_boost_round)
 
 print("特徴量の重要度（gain）:")
-print(step5_model.importance(model, features).round(3).to_string())
+print(lgbm.importance(model, features).round(3).to_string())
 
 SUBMISSION_DIR.mkdir(exist_ok=True)
 submission_path = SUBMISSION_DIR / "submission.csv"

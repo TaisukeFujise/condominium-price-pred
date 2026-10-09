@@ -1,9 +1,9 @@
-"""工程 5：モデル。学習と予測。パラメータは step6_params.py。"""
+"""LightGBM の学習と予測。パラメータは params.py。"""
 
 import lightgbm as lgb
 import pandas as pd
 
-from src.step6_params import PARAMS
+from src.model.params import PARAMS
 
 
 def fit_with_validation(

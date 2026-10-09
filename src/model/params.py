@@ -1,4 +1,4 @@
-"""工程 6：ハイパーパラメータ。今は LightGBM のデフォルトのまま。"""
+"""ハイパーパラメータ。今は LightGBM のデフォルトのまま。"""
 
 from src.config import SEED
 

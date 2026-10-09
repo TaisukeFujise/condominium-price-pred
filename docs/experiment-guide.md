@@ -4,18 +4,18 @@
 
 ## 構成
 
-`main.py` が工程 1〜8 を順に呼ぶ。各工程の中身は `src/` の番号付きのファイルにある。
+`main.py` が工程を順に呼ぶ。各工程の中身は `src/` の 3 つのフォルダにある（工程の番号は [`workflow.md`](workflow.md) と同じ）。
 
 | ファイル | 工程 |
 |---|---|
-| `src/step1_preprocess.py` | 1. データの読み込みと前処理 |
-| `src/step2_features/` | 2. 特徴量（テーマごとにファイルを分ける） |
-| `src/step3_selection.py` | 3. 学習データの選択（行の除外・重み） |
-| `src/step4_target.py` | 4. 目的変数（何を予測させるか、価格への戻し方） |
-| `src/step5_model.py` | 5. モデル（学習と予測） |
-| `src/step6_params.py` | 6. ハイパーパラメータ |
-| `src/step7_ensemble.py` | 7. アンサンブル |
-| `src/step8_postprocess.py` | 8. 後処理（予測値の補正） |
+| `src/data/preprocess.py` | 1. データの読み込みと前処理 |
+| `src/features/` | 2. 特徴量（テーマごとにファイルを分ける） |
+| `src/data/selection.py` | 3. 学習データの選択（行の除外・重み） |
+| `src/model/target.py` | 4. 目的変数（何を予測させるか、価格への戻し方） |
+| `src/model/lgbm.py` | 5. モデル（学習と予測） |
+| `src/model/params.py` | 6. ハイパーパラメータ |
+| `src/model/ensemble.py` | 7. アンサンブル |
+| `src/model/postprocess.py` | 8. 後処理（予測値の補正） |
 | `src/validation.py` | 検証（時系列 CV）。チームの合意なしに変えない |
 | `src/config.py` | パス・目的変数の列名・seed |
 
@@ -51,7 +51,7 @@ main が新しい土台になる。自分のブランチを最新の main に合
 テーマごとにファイルを作り、「元の表を受け取って、新しい列だけの表を返す関数」として書く。元の表は書き換えない。
 
 ```python
-# src/step2_features/station.py
+# src/features/station.py
 import pandas as pd
 
 
@@ -61,13 +61,13 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
     return out
 ```
 
-`src/step2_features/__init__.py` の `build()` に 3 行足す。
+`src/features/__init__.py` の `build_features()` に 3 行足す。
 
 ```python
-from src.step2_features import base, station
+from src.features import base, station
 
 
-def build(df):
+def build_features(df):
     features = list(base.FEATURES)
 
     new = station.make(df)
