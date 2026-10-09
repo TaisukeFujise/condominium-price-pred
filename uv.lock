@@ -436,6 +436,7 @@ dependencies = [
 dev = [
     { name = "ipykernel" },
     { name = "jupyterlab" },
+    { name = "matplotlib-fontja" },
 ]
 
 [package.metadata]
@@ -453,6 +454,7 @@ requires-dist = [
 dev = [
     { name = "ipykernel", specifier = ">=7.4.0" },
     { name = "jupyterlab", specifier = ">=4.6.4" },
+    { name = "matplotlib-fontja", specifier = ">=1.1.0" },
 ]
 
 [[package]]
@@ -1375,6 +1377,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7b/30/687ccce22f66a57fed85942450e88062773bcbf1a42914e70c7148ec71dc/matplotlib-3.11.2-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:75b6d88402770e181b5d06a67dda4129c31da7d05004d63a21c310ec78d1b83c", size = 10824960, upload-time = "2026-09-11T19:05:13.9Z" },
     { url = "https://files.pythonhosted.org/packages/d3/34/117fe35a8d05054b4b34d2d29287099927c24c3841d36e06d9fa2f20c1cf/matplotlib-3.11.2-cp315-cp315t-win_amd64.whl", hash = "sha256:a6939df7567114b6bac7f4c5e06c84a67f197c1b2f2e4b234d4eecb3bfec9482", size = 9551204, upload-time = "2026-09-11T19:05:16.48Z" },
     { url = "https://files.pythonhosted.org/packages/63/5a/9f440e7bec8b80d0af2a65d1165b2f4e718982dad785531f62255d9ff19b/matplotlib-3.11.2-cp315-cp315t-win_arm64.whl", hash = "sha256:d480038c83691532ed52ff3147db51fa902fc78cb2d8349993a1cdb684435bff", size = 9233946, upload-time = "2026-09-11T19:05:19.063Z" },
+]
+
+[[package]]
+name = "matplotlib-fontja"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "matplotlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/0a/6710bc330f4372287e73c7fbc61d27b9a3c93ff19d6bf1d492b3482d3e52/matplotlib_fontja-1.1.0.tar.gz", hash = "sha256:eb0ad93eea01ceac6b563bccce9959335bfd487824160712a81984142ffb8e44", size = 4164296, upload-time = "2025-04-24T13:20:27.892Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/d8/7c0487747902ced21faf4cc6f9cfd8467a845261908dbdaf9e256faa9119/matplotlib_fontja-1.1.0-py2.py3-none-any.whl", hash = "sha256:930603aaffd420ad89a6cf3399f074b14e939e8e349843ed1cb558ac97c8c94a", size = 4175561, upload-time = "2025-04-24T13:20:26.216Z" },
 ]
 
 [[package]]
