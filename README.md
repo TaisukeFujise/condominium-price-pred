@@ -23,13 +23,13 @@ uv sync
 
 `uv sync` で Python 3.12 の取得・`.venv/` の作成・`uv.lock` どおりのパッケージ導入まで自動で行われる。
 
-動作確認:
+動作確認（ベースラインの学習から提出ファイルの作成まで、数十秒かかる）:
 
 ```bash
 uv run python main.py
 ```
 
-`Python: 3.12.x` と、`.venv/bin/python3` のパスが表示されれば OK。
+最後に `保存しました: outputs/submission.csv（29341 行）` と表示されれば OK。途中に検証 RMSLE と特徴量の重要度も表示される。`outputs/` は git の管理外。
 
 ## データ
 
