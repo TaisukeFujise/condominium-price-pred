@@ -28,7 +28,7 @@
 
 ## 実験のルール
 
-手順と書き方の詳細は `docs/experiment-guide.md`、検証方法の理由と見直しの手順は `docs/validation.md`。
+手順と書き方の詳細は `docs/experiment-guide.md`、検証方法の理由と見直しの手順は `docs/validation.md`、精度改善の工程と打ち手は `docs/workflow.md`。
 
 - 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる。v1 は暫定で、CV と LB が連動するかを確かめてからチームで確定する
 - 実験は `src.train.run_experiment` を通して実行し、記録の .json を残す

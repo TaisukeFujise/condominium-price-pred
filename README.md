@@ -60,7 +60,7 @@ uv run python -m experiments.baseline   # 実験を 1 つ実行（CV → 提出�
 uv run python -m src.summary            # 全員の実験結果を一覧
 ```
 
-実験の追加方法とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md) にまとめている。
+実験の追加方法とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
 
 ### スクリプト
 
