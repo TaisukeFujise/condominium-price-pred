@@ -71,11 +71,13 @@ for i, (train_idx, valid_idx) in enumerate(validation.time_series_folds(train)):
         f"fold {i}（検証 {validation.describe_period(fold_valid)}）: "
         f"RMSLE {score:.5f}（best_iteration={best_iterations[-1]}）"
     )
-print(f"CV RMSLE（{validation.N_FOLDS} fold の平均、検証 {validation.VERSION}）: {np.mean(scores):.5f}")
+print(
+    f"CV RMSLE（{validation.N_FOLDS} fold の平均、検証 {validation.VERSION}）: {np.mean(scores):.5f}"
+)
 
 # 本番：全データで学習し直して test を予測する。
 # fold ごとに学習データの量が違うので、木の本数は 1 つの fold に合わせず平均を使う
-num_boost_round = int(round(np.mean(best_iterations)))
+num_boost_round = round(np.mean(best_iterations))
 price, model = train_and_predict(train, test, features, num_boost_round=num_boost_round)
 
 print("特徴量の重要度（gain）:")

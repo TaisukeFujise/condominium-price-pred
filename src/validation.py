@@ -65,5 +65,7 @@ def describe_period(rows: pd.DataFrame) -> str:
     Returns:
         "2024Q4〜2025Q2" の形の文字列。
     """
-    quarters = (rows["取引年"].astype(str) + "Q" + rows["取引四半期"].astype(str)).sort_values()
+    quarters = (
+        rows["取引年"].astype(str) + "Q" + rows["取引四半期"].astype(str)
+    ).sort_values()
     return f"{quarters.iloc[0]}〜{quarters.iloc[-1]}"

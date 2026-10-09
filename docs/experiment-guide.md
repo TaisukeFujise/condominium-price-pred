@@ -29,7 +29,14 @@
    uv run python main.py
    ```
 
-4. 結果に応じて PR を出す
+4. コードを整形してチェックする
+
+   ```bash
+   uv run ruff format .
+   uv run ruff check --fix .
+   ```
+
+5. 結果に応じて PR を出す
 
 | 結果 | やること |
 |---|---|

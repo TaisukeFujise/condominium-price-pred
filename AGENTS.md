@@ -30,6 +30,7 @@
 - 関数の引数と戻り値には型ヒントを書く（例：`def make(df: pd.DataFrame) -> pd.DataFrame:`）
 - docstring は Google スタイルで書く。1 行目に何をするかを 1 文で書き、引数があれば `Args:`、戻り値があれば `Returns:` を書く。引数の型は型ヒントに書き、docstring では繰り返さない
 - コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く
+- コードを変えたら `uv run ruff format .` と `uv run ruff check --fix .` を実行し、指摘がない状態にする
 
 ## 実験のルール
 

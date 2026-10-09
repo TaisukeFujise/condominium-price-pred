@@ -52,7 +52,9 @@ def fit(
     Returns:
         学習済みのモデル。
     """
-    return lgb.train(PARAMS, lgb.Dataset(x, y, weight=weight), num_boost_round=num_boost_round)
+    return lgb.train(
+        PARAMS, lgb.Dataset(x, y, weight=weight), num_boost_round=num_boost_round
+    )
 
 
 def best_iteration(model: lgb.Booster) -> int:

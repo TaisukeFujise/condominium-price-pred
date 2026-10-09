@@ -59,6 +59,15 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 
 実験の進め方とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
 
+### コードの整形とチェック
+
+PR を出す前に実行する。書式をそろえ、怪しい書き方を指摘・修正する（[ruff](https://docs.astral.sh/ruff/)）。
+
+```bash
+uv run ruff format .
+uv run ruff check --fix .
+```
+
 ### スクリプト
 
 ```bash
