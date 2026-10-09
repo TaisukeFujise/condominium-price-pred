@@ -59,6 +59,15 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 
 ## 使い方
 
+### 実験
+
+```bash
+uv run python -m experiments.baseline   # 実験を 1 つ実行（CV → 提出ファイル → 記録）
+uv run python -m src.summary            # 全員の実験結果を一覧
+```
+
+実験の追加方法とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md) にまとめている。
+
 ### スクリプト
 
 ```bash

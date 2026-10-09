@@ -21,10 +21,19 @@
 ## 開発環境
 
 - Python 3.12 を uv で管理する。パッケージの追加は `uv add <package>`。`pip install` は使わない
-- 実行：`uv run python main.py`（ベースラインの学習から `submissions/submission.csv` の作成まで）
+- `main.py` は流れをつかむための 1 ファイル版。実験は `src/` と `experiments/` で行う
+- 実験の実行：`uv run python -m experiments.<名前>.<スクリプト名>`（例：`uv run python -m experiments.baseline`）
+- 実験結果の一覧：`uv run python -m src.summary`
 - `submissions/` は git の管理外
 
-## 検証の方針
+## 実験のルール
 
-- test は train より未来の期間なので、検証データは時系列で切る（過去で学習して未来を予測する）。ランダム分割は使わない
-- target encoding などで目的変数を使う特徴量は、検証データの値が混ざらないように fold の外か過去の期間だけで計算する
+手順と書き方の詳細は `docs/experiment-guide.md`。
+
+- 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる
+- 実験は `src.train.run_experiment` を通して実行し、記録の .json を残す
+- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書く
+- 他のメンバーの `experiments/<名前>/` は書き換えない
+- test は train より未来の期間。ランダム分割で検証しない
+- 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する
+- 認証情報（`kaggle.json` など）はコミットしない。main へは PR で入れる
