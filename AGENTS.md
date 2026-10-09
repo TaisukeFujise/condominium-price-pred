@@ -21,9 +21,8 @@
 ## 開発環境
 
 - Python 3.12 を uv で管理する。パッケージの追加は `uv add <package>`。`pip install` は使わない
-- `main.py` は流れをつかむための 1 ファイル版。実験は `src/` と `experiments/` で行う
-- 実験の実行：`uv run python -m experiments.<名前>.<スクリプト名>`（例：`uv run python -m experiments.baseline`）
-- 実験結果の一覧：`uv run python -m src.summary`
+- 実行：`uv run python main.py`（CV の表示から `submissions/submission.csv` の作成まで）
+- `main.py` は工程 1〜8 を順に呼ぶだけ。各工程の中身は `src/step<番号>_*.py`（番号は `docs/workflow.md` の工程番号）
 - `submissions/` は git の管理外
 
 ## 実験のルール
@@ -31,9 +30,10 @@
 手順と書き方の詳細は `docs/experiment-guide.md`、検証方法の理由と見直しの手順は `docs/validation.md`、精度改善の工程と打ち手は `docs/workflow.md`。
 
 - 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる。v1 は暫定で、CV と LB が連動するかを確かめてからチームで確定する
-- 実験は `src.train.run_experiment` を通して実行し、記録の .json を残す
-- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書く
-- 他のメンバーの `experiments/<名前>/` は書き換えない
+- 実験 1 つにつきブランチ 1 本。一度に変えるのは 1 つの工程の 1 つの変更だけ
+- CV が良くなったら PR を出し、本文に main の CV とこの PR の CV を書く。良くならなかった実験も PR を出し、結果を書いて閉じる（`不採用` ラベル）
+- 特徴量は `src/step2_features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`build()` に足す
+- `src/step1_preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
 - test は train より未来の期間。ランダム分割で検証しない
-- 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する
+- 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する。工程 2（fold に分ける前）では作らない
 - 認証情報（`kaggle.json` など）はコミットしない。main へは PR で入れる

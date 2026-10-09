@@ -35,9 +35,10 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     return folds
 
 
-def rmsle(y_log: np.ndarray, pred_log: np.ndarray) -> float:
-    """log1p した正解と予測から RMSLE を計算する（対数価格での RMSE ＝ 元の価格での RMSLE）。"""
-    return float(np.sqrt(np.mean((np.asarray(pred_log) - np.asarray(y_log)) ** 2)))
+def rmsle(price_true: np.ndarray, price_pred: np.ndarray) -> float:
+    """円の価格どうしで RMSLE を計算する（コンペの評価指標）。"""
+    diff = np.log1p(np.asarray(price_pred)) - np.log1p(np.asarray(price_true))
+    return float(np.sqrt(np.mean(diff**2)))
 
 
 def describe_period(rows: pd.DataFrame) -> str:

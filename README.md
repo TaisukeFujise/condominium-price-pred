@@ -55,12 +55,9 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 
 ### 実験
 
-```bash
-uv run python -m experiments.baseline   # 実験を 1 つ実行（CV → 提出ファイル → 記録）
-uv run python -m src.summary            # 全員の実験結果を一覧
-```
+試したい工程のファイル（`src/step<番号>_*.py`）を直して、`uv run python main.py` を実行する。CV が良くなったら PR を出す。
 
-実験の追加方法とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
+実験の進め方とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
 
 ### スクリプト
 
