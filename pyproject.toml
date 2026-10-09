@@ -3,7 +3,6 @@ name = "condominium-resale-price-pred"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "kagglehub>=1.0.2",
     "lightgbm>=4.7.0",
     "matplotlib>=3.11.2",
     "numpy>=2.5.3",

@@ -38,12 +38,6 @@ uv run python main.py
 - `train.csv` / `test.csv` / `sample_submission.csv`
 - 各カラムの値のまとめ: [`docs/columns.md`](docs/columns.md)
 
-補足：Kaggle から取り直す場合は `uv run python download_data.py` を実行する。事前に次の準備が必要。
-
-1. [Settings](https://www.kaggle.com/settings) で API トークンを発行する
-2. `uv run python -c "import kagglehub; kagglehub.login()"` でトークンを登録する
-3. コンペのルールに同意する
-
 ## uv とは
 
 Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理するツール。pyenv + venv + pip の役割を 1 つでこなし、pip よりかなり速い。
