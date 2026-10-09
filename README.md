@@ -15,13 +15,21 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### 2. 依存パッケージをインストール
 
+リポジトリのルートで実行する。
+
 ```bash
-git clone <this-repo>
-cd condominium-resale-price-pred
 uv sync
 ```
 
 `uv sync` で Python 3.12 の取得・`.venv/` の作成・`uv.lock` どおりのパッケージ導入まで自動で行われる。
+
+動作確認:
+
+```bash
+uv run python main.py
+```
+
+`Python: 3.12.x` と、`.venv/bin/python3` のパスが表示されれば OK。
 
 ### 3. Kaggle の認証
 
@@ -39,7 +47,7 @@ chmod 600 ~/.kaggle/kaggle.json
 ### 4. データのダウンロード
 
 ```bash
-uv run python main.py
+uv run python download_data.py
 ```
 
 ダウンロード先のパスが表示される。
