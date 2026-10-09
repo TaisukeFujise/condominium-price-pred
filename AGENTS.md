@@ -30,7 +30,7 @@
 
 手順と書き方の詳細は `docs/experiment-guide.md`。
 
-- 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる
+- 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる。v1 は暫定で、CV と LB が連動するかを確かめてからチームで確定する
 - 実験は `src.train.run_experiment` を通して実行し、記録の .json を残す
 - 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書く
 - 他のメンバーの `experiments/<名前>/` は書き換えない
