@@ -24,3 +24,7 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 # 日本語の全角記号（（）、：など）を「紛らわしい文字」として指摘しないようにする
 # 行の長さは ruff format が折り返すので、折り返せない文章（docstring・文字列）は指摘しない
 ignore = ["RUF001", "RUF002", "RUF003", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# ノートブックの最初のセルには、これから使う import をまとめて書いておくので、未使用の import を指摘しない
+"notebooks/*.ipynb" = ["F401"]
