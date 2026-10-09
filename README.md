@@ -29,7 +29,7 @@ uv sync
 uv run python main.py
 ```
 
-最後に `保存しました: outputs/submission.csv（29341 行）` と表示されれば OK。途中に検証 RMSLE と特徴量の重要度も表示される。`outputs/` は git の管理外。
+最後に `保存しました: submissions/submission.csv（29341 行）` と表示されれば OK。途中に検証 RMSLE と特徴量の重要度も表示される。`submissions/` は git の管理外。
 
 ## データ
 

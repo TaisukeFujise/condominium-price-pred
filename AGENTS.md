@@ -21,8 +21,8 @@
 ## 開発環境
 
 - Python 3.12 を uv で管理する。パッケージの追加は `uv add <package>`。`pip install` は使わない
-- 実行：`uv run python main.py`（ベースラインの学習から `outputs/submission.csv` の作成まで）
-- `outputs/` は git の管理外
+- 実行：`uv run python main.py`（ベースラインの学習から `submissions/submission.csv` の作成まで）
+- `submissions/` は git の管理外
 
 ## 検証の方針
 

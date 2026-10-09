@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 DATA_DIR = Path("utokyo-mlapp-2026-ex1")
-OUTPUT_DIR = Path("outputs")
+SUBMISSION_DIR = Path("submissions")
 TARGET = "取引価格（総額）"
 
 
@@ -179,7 +179,7 @@ price_pred = np.expm1(y_test_pred)
 # =============================================================================
 # 8. 提出ファイルの作成
 # =============================================================================
-OUTPUT_DIR.mkdir(exist_ok=True)
+SUBMISSION_DIR.mkdir(exist_ok=True)
 submission = pd.DataFrame({"id": test["id"], "price": price_pred})
-submission.to_csv(OUTPUT_DIR / "submission.csv", index=False)
-print(f"保存しました: {OUTPUT_DIR / 'submission.csv'}（{len(submission)} 行）")
+submission.to_csv(SUBMISSION_DIR / "submission.csv", index=False)
+print(f"保存しました: {SUBMISSION_DIR / 'submission.csv'}（{len(submission)} 行）")
