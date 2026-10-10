@@ -11,6 +11,9 @@ __pycache__/
 # *.csv
 submissions/
 
+# 外部データ（ノートブックが自動でダウンロードする）
+external_data/
+
 # OS / editor
 .DS_Store
 .vscode/
