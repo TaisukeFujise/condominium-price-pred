@@ -57,6 +57,7 @@ def _train_fold(
     valid_mask: pd.Series,
     verbose: bool = True,
     params: dict | None = None,
+    use_target_encoding: bool = True,
 ):
     """1つのtrain/valid分割でtarget encoding→学習→検証スコア算出までを行う（単一split・CV共通）。"""
     params = params or LGB_PARAMS
@@ -66,11 +67,12 @@ def _train_fold(
 
     # target encoding（地区名・最寄駅：名称）: train側はOOF、valid/testはtrain全体でfitしたmappingを適用
     mappings = {}
-    for col in TARGET_ENCODE_COLUMNS:
-        X_train[f"{col}_target_enc"] = oof_encode(X_train[col], y_train_log)
-        mappings[col] = fit_mapping(X_train[col], y_train_log)
-    valid_te = apply_encoding({col: X_valid[col] for col in TARGET_ENCODE_COLUMNS}, mappings)
-    X_valid = pd.concat([X_valid, valid_te], axis=1)
+    if use_target_encoding:
+        for col in TARGET_ENCODE_COLUMNS:
+            X_train[f"{col}_target_enc"] = oof_encode(X_train[col], y_train_log)
+            mappings[col] = fit_mapping(X_train[col], y_train_log)
+        valid_te = apply_encoding({col: X_valid[col] for col in TARGET_ENCODE_COLUMNS}, mappings)
+        X_valid = pd.concat([X_valid, valid_te], axis=1)
 
     train_set = lgb.Dataset(X_train, label=y_train_log, categorical_feature=CATEGORICAL_COLUMNS)
     valid_set = lgb.Dataset(

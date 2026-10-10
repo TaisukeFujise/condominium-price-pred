@@ -27,7 +27,11 @@ SUBMISSIONS_DIR = PROJECT_ROOT / "submissions"
 
 
 def fit_price_calibrator(
-    features: pd.DataFrame, target: pd.Series, train_mask: pd.Series, params: dict | None = None
+    features: pd.DataFrame,
+    target: pd.Series,
+    train_mask: pd.Series,
+    params: dict | None = None,
+    use_target_encoding: bool = True,
 ) -> tuple[IsotonicRegression, int]:
     """outer train内でさらに1つ内側のcutoffを切り、予測値(log)→実際値(log)のisotonic較正を学習する。
 
@@ -38,7 +42,13 @@ def fit_price_calibrator(
     inner_train_mask, inner_valid_mask = time_series_cv_splits(inner_features, n_folds=1)[0]
 
     model, _, mappings = _train_fold(
-        inner_features, inner_target, inner_train_mask, inner_valid_mask, verbose=False, params=params
+        inner_features,
+        inner_target,
+        inner_train_mask,
+        inner_valid_mask,
+        verbose=False,
+        params=params,
+        use_target_encoding=use_target_encoding,
     )
 
     pred_log = _predict_log(model, mappings, inner_features[inner_valid_mask])
@@ -49,16 +59,20 @@ def fit_price_calibrator(
     return calibrator, model.best_iteration
 
 
-def evaluate_with_price_calibration(train_df: pd.DataFrame, n_folds: int = N_CV_FOLDS) -> dict:
+def evaluate_with_price_calibration(
+    train_df: pd.DataFrame, n_folds: int = N_CV_FOLDS, use_target_encoding: bool = True
+) -> dict:
     categories = fit_categories(train_df)
     features = build_features(train_df, categories=categories)
     target = train_df[TARGET_COLUMN]
 
     raw_scores, calibrated_scores = [], []
     for i, (train_mask, valid_mask) in enumerate(time_series_cv_splits(features, n_folds=n_folds)):
-        calibrator, _ = fit_price_calibrator(features, target, train_mask)
+        calibrator, _ = fit_price_calibrator(features, target, train_mask, use_target_encoding=use_target_encoding)
 
-        model, raw_score, mappings = _train_fold(features, target, train_mask, valid_mask, verbose=False)
+        model, raw_score, mappings = _train_fold(
+            features, target, train_mask, valid_mask, verbose=False, use_target_encoding=use_target_encoding
+        )
         pred_log = _predict_log(model, mappings, features[valid_mask])
         calibrated_log = calibrator.predict(pred_log)
 
