@@ -1,8 +1,8 @@
 """最小構成のLightGBMモデル。
 
 - 目的変数は log1p(price) で学習（RMSLE ≒ log変換後のRMSE）。
-- 検証は時系列split：学習データの直近2四半期（2025年第1四半期以降）をホールドアウトにする。
-  テスト期間（2025年第3四半期以降）は学習データに含まれないため、この境目が最もテスト条件に近い。
+- 検証は時系列split（expanding window）：学習データの最後の四半期を起点に、直近3四半期
+  （テスト期間2025Q3〜2026Q1と同じ長さ）をホールドアウトにする。
 - カテゴリ特徴量の集合は学習データで固定し、test側にも同じcategory codeを適用する
   （固定しないとtrain/testでcode対応がずれてpredictが壊れる）。
 """
@@ -23,8 +23,9 @@ from my_project.target_encoding import TARGET_ENCODE_COLUMNS, apply_encoding, fi
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SUBMISSIONS_DIR = PROJECT_ROOT / "submissions"
 
-# 2025年第1四半期(=2025*4+1)以降を検証用ホールドアウトにする
-VALID_QUARTER_INDEX_THRESHOLD = 2025 * 4 + 1
+# テスト期間（2025Q3〜2026Q1）と同じ長さ＝3四半期をホールドアウトの単位にする
+VALID_QUARTERS = 3
+N_CV_FOLDS = 3
 
 SEED = 42
 
@@ -44,11 +45,6 @@ LGB_PARAMS = {
 }
 
 
-def time_series_split(features: pd.DataFrame, threshold: int = VALID_QUARTER_INDEX_THRESHOLD):
-    is_valid = features["txn_quarter_index"] >= threshold
-    return ~is_valid, is_valid
-
-
 def rmsle(y_true, y_pred) -> float:
     y_pred = np.clip(y_pred, a_min=0, a_max=None)
     return float(np.sqrt(mean_squared_error(np.log1p(y_true), np.log1p(y_pred))))
@@ -60,8 +56,10 @@ def _train_fold(
     train_mask: pd.Series,
     valid_mask: pd.Series,
     verbose: bool = True,
+    params: dict | None = None,
 ):
     """1つのtrain/valid分割でtarget encoding→学習→検証スコア算出までを行う（単一split・CV共通）。"""
+    params = params or LGB_PARAMS
     X_train, X_valid = features[train_mask].copy(), features[valid_mask].copy()
     y_train, y_valid = target[train_mask], target[valid_mask]
     y_train_log = np.log1p(y_train)
@@ -84,7 +82,7 @@ def _train_fold(
         callbacks.append(lgb.log_evaluation(100))
 
     model = lgb.train(
-        LGB_PARAMS,
+        params,
         train_set,
         num_boost_round=2000,
         valid_sets=[train_set, valid_set],
@@ -97,39 +95,54 @@ def _train_fold(
     return model, score, mappings
 
 
-def train_lightgbm(train_df: pd.DataFrame):
+def time_series_cv_splits(
+    features: pd.DataFrame,
+    n_folds: int = N_CV_FOLDS,
+    valid_quarters: int = VALID_QUARTERS,
+) -> list[tuple[pd.Series, pd.Series]]:
+    """expanding window：学習データの最後の四半期を起点に、直近`valid_quarters`四半期ずつ遡ってn_folds個の分割を作る。
+
+    fold 0（先頭）が一番直近＝本番のテスト条件に一番近い。
+    """
+    last_quarter = features["txn_quarter_index"].max()
+    splits = []
+    for k in range(n_folds):
+        valid_end = last_quarter - k * valid_quarters
+        valid_start = valid_end - valid_quarters + 1
+        train_mask = features["txn_quarter_index"] < valid_start
+        valid_mask = features["txn_quarter_index"].between(valid_start, valid_end)
+        splits.append((train_mask, valid_mask))
+    return splits
+
+
+def time_series_split(
+    features: pd.DataFrame, valid_quarters: int = VALID_QUARTERS
+) -> tuple[pd.Series, pd.Series]:
+    """直近`valid_quarters`四半期をホールドアウトにする単一分割（`time_series_cv_splits`のfold 0）。"""
+    return time_series_cv_splits(features, n_folds=1, valid_quarters=valid_quarters)[0]
+
+
+def train_lightgbm(train_df: pd.DataFrame, params: dict | None = None):
     categories = fit_categories(train_df)
     features = build_features(train_df, categories=categories)
     target = train_df[TARGET_COLUMN]
 
     train_mask, valid_mask = time_series_split(features)
-    print(f"train: {train_mask.sum()}件, valid(2025Q1以降): {valid_mask.sum()}件")
+    print(f"train: {int(train_mask.sum())}件, valid(直近{VALID_QUARTERS}四半期): {int(valid_mask.sum())}件")
 
-    model, score, mappings = _train_fold(features, target, train_mask, valid_mask, verbose=True)
+    model, score, mappings = _train_fold(features, target, train_mask, valid_mask, verbose=True, params=params)
     print(f"\nValidation RMSLE: {score:.5f} (best_iteration={model.best_iteration})")
 
     return model, score, categories, mappings
 
 
-def time_series_cv_splits(
-    features: pd.DataFrame,
-    n_folds: int = 3,
-    valid_quarters: int = 2,
-    base_threshold: int = VALID_QUARTER_INDEX_THRESHOLD,
-) -> list[tuple[pd.Series, pd.Series]]:
-    """expanding window：学習期間を伸ばしながら、その直後の`valid_quarters`四半期を検証にする分割をn_folds個作る。"""
-    splits = []
-    for k in range(n_folds):
-        threshold = base_threshold - k * valid_quarters
-        train_mask = features["txn_quarter_index"] < threshold
-        valid_mask = (features["txn_quarter_index"] >= threshold) & (
-            features["txn_quarter_index"] < threshold + valid_quarters
-        )
-        splits.append((train_mask, valid_mask))
-    return splits
-
-
-def cross_validate(train_df: pd.DataFrame, n_folds: int = 3, valid_quarters: int = 2) -> dict:
+def cross_validate(
+    train_df: pd.DataFrame,
+    n_folds: int = N_CV_FOLDS,
+    valid_quarters: int = VALID_QUARTERS,
+    params: dict | None = None,
+    verbose: bool = True,
+) -> dict:
     """複数の時系列foldで学習・評価し、RMSLEの平均とばらつき（std）を見る。
 
     単一ホールドアウトだとスコア差が本物の改善か誤差か判断できないため、
@@ -144,15 +157,17 @@ def cross_validate(train_df: pd.DataFrame, n_folds: int = 3, valid_quarters: int
         time_series_cv_splits(features, n_folds=n_folds, valid_quarters=valid_quarters)
     ):
         quarters = sorted(features.loc[valid_mask, "txn_quarter_index"].unique())
-        _, score, _ = _train_fold(features, target, train_mask, valid_mask, verbose=False)
-        print(
-            f"fold {i + 1}/{n_folds}: valid quarters={quarters}, "
-            f"train={int(train_mask.sum())}件, valid={int(valid_mask.sum())}件 -> RMSLE={score:.5f}"
-        )
+        _, score, _ = _train_fold(features, target, train_mask, valid_mask, verbose=False, params=params)
+        if verbose:
+            print(
+                f"fold {i + 1}/{n_folds}: valid quarters={quarters}, "
+                f"train={int(train_mask.sum())}件, valid={int(valid_mask.sum())}件 -> RMSLE={score:.5f}"
+            )
         scores.append(score)
 
     scores_arr = np.array(scores)
-    print(f"\nCV RMSLE: mean={scores_arr.mean():.5f} ± {scores_arr.std():.5f}  (各fold: {[round(s, 5) for s in scores]})")
+    if verbose:
+        print(f"\nCV RMSLE: mean={scores_arr.mean():.5f} ± {scores_arr.std():.5f}  (各fold: {[round(s, 5) for s in scores]})")
     return {"scores": scores, "mean": float(scores_arr.mean()), "std": float(scores_arr.std())}
 
 

@@ -27,7 +27,8 @@ def fit_mapping(category: pd.Series, y_log: pd.Series, smoothing: float = SMOOTH
 
 
 def transform(category: pd.Series, mapping: pd.Series, global_mean: float) -> pd.Series:
-    return category.map(mapping).fillna(global_mean)
+    # category dtypeのままmapすると結果もCategoricalのままになり、未知の値でfillnaできないことがある
+    return category.astype(object).map(mapping).fillna(global_mean).astype(float)
 
 
 def oof_encode(
