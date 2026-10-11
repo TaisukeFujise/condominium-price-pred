@@ -9,7 +9,7 @@ __pycache__/
 # Data / outputs
 # data/
 # *.csv
-# submissions/
+submissions/
 
 # 外部データ（ノートブックが自動でダウンロードする）
 external_data/
