@@ -40,7 +40,7 @@
 - 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる。v1 は暫定で、CV と LB が連動するかを確かめてからチームで確定する
 - 実験 1 つにつきブランチ 1 本。一度に変えるのは 1 つの工程の 1 つの変更だけ
 - CV が良くなったら PR を出し、本文に main の CV とこの PR の CV を書く。良くならなかった実験も PR を出し、結果を書いて閉じる（`不採用` ラベル）
-- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`build_features()` に足す
+- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`src/features/build.py` の `build_features()` に足す
 - `src/data/preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
 - test は train より未来の期間。ランダム分割で検証しない
 - 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する。工程 2（fold に分ける前）では作らない

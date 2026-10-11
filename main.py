@@ -13,7 +13,7 @@ import pandas as pd
 from src import validation
 from src.config import SUBMISSION_DIR, TARGET
 from src.data import preprocess, selection
-from src.features import build_features
+from src.features.build import build_features
 from src.model import ensemble, lgbm, postprocess, target
 
 
