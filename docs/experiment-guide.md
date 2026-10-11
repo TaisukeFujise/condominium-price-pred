@@ -71,7 +71,7 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
     return out
 ```
 
-`src/features/__init__.py` の `build_features()` に 3 行足す。
+`src/features/build.py` の `build_features()` に 3 行足す。
 
 ```python
 from src.features import base, station
