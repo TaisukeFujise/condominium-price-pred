@@ -1,0 +1,23 @@
+name: 不具合・困りごと
+description: 動かない、エラーが出る、手順が分からない
+title: "[不具合] "
+labels: ["不具合"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 何が起きたか
+      description: 実行したコマンドと、出たエラーをそのまま貼る
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 本来どうなるはずか
+  - type: input
+    id: env
+    attributes:
+      label: 環境
+      description: OS とブランチ
+      placeholder: 例）macOS 15 / feat/station-features

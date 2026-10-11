@@ -3,7 +3,6 @@ name = "condominium-resale-price-pred"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "kagglehub>=1.0.2",
     "lightgbm>=4.7.0",
     "matplotlib>=3.11.2",
     "numpy>=2.5.3",
@@ -17,4 +16,16 @@ dev = [
     "ipykernel>=7.4.0",
     "jupyterlab>=4.6.4",
     "matplotlib-fontja>=1.1.0",
+    "ruff>=0.16.10",
 ]
+
+[tool.ruff]
+# ノートブックは各自の試行の場所なので、整形とチェックの対象から外す
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+# E/F: 基本的な誤り、I: import の順番、B: バグになりやすい書き方、UP: 古い書き方、RUF: ruff 独自
+select = ["E", "F", "I", "B", "UP", "RUF"]
+# 日本語の全角記号（（）、：など）を「紛らわしい文字」として指摘しないようにする
+# 行の長さは ruff format が折り返すので、折り返せない文章（docstring・文字列）は指摘しない
+ignore = ["RUF001", "RUF002", "RUF003", "E501"]

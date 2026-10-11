@@ -38,12 +38,6 @@ uv run python main.py
 - `train.csv` / `test.csv` / `sample_submission.csv`
 - 各カラムの値のまとめ: [`docs/columns.md`](docs/columns.md)
 
-補足：Kaggle から取り直す場合は `uv run python download_data.py` を実行する。事前に次の準備が必要。
-
-1. [Settings](https://www.kaggle.com/settings) で API トークンを発行する
-2. `uv run python -c "import kagglehub; kagglehub.login()"` でトークンを登録する
-3. コンペのルールに同意する
-
 ## uv とは
 
 Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理するツール。pyenv + venv + pip の役割を 1 つでこなし、pip よりかなり速い。
@@ -58,6 +52,21 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 この 3 ファイルがあれば、誰の PC でも `uv sync` で同じ環境が再現できる。`requirements.txt` は使わない（`uv.lock` が同じ役割）。
 
 ## 使い方
+
+### 実験
+
+試したい工程のファイル（`src/data/`・`src/features/`・`src/model/` の中）を直して、`uv run python main.py` を実行する。CV が良くなったら PR を出す。
+
+実験の進め方とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
+
+### コードの整形とチェック
+
+PR を出す前に実行する。書式をそろえ、怪しい書き方を指摘・修正する（[ruff](https://docs.astral.sh/ruff/)）。
+
+```bash
+uv run ruff format .
+uv run ruff check --fix .
+```
 
 ### スクリプト
 

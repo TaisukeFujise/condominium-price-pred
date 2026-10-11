@@ -1,0 +1,25 @@
+"""ベースラインの特徴量（src/data/preprocess.py で作った列をそのまま使う）。
+
+元データのうち、次の列はモデルに入れない:
+  - id                       : 価格とは関係ない
+  - 取引価格（総額）          : 目的変数
+  - 市区町村コード            : 市区町村名と 1:1 で重複。外部データと連結するキーとして使える（docs/columns.md ※2）
+  - 取引時期, 建築年,
+    最寄駅：距離（分）, 面積（㎡）: 文字列のまま。数値に直した列（経過四半期・建築年_数値など）を代わりに使う
+  - is_train                 : train と test を見分ける目印の列
+"""
+
+from src.data.preprocess import CATEGORICAL_COLS
+
+NUMERIC_COLS = [
+    "経過四半期",
+    "取引四半期",
+    "建築年_数値",
+    "築年数",
+    "駅距離_分",
+    "面積_数値",
+    "建ぺい率（％）",
+    "容積率（％）",
+]
+
+FEATURES = NUMERIC_COLS + CATEGORICAL_COLS
