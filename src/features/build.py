@@ -22,6 +22,8 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     new = far_ratio.make(df)
     df = pd.concat([df, new], axis=1)
     features += list(new.columns)
+    # 補完した列は元の値を含むので、元の列は外す
+    features.remove("容積率（％）")
 
     # 新しい特徴量は、次の形で足す:
     #   new = location.make(df)
