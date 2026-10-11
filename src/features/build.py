@@ -5,7 +5,7 @@
 
 import pandas as pd
 
-from src.features import base, district_latlon
+from src.features import base, district_latlon, major_station
 
 
 def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -20,6 +20,10 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     features = list(base.FEATURES)
 
     new = district_latlon.make(df)
+    df = pd.concat([df, new], axis=1)
+    features += list(new.columns)
+
+    new = major_station.make(df)
     df = pd.concat([df, new], axis=1)
     features += list(new.columns)
 
