@@ -74,6 +74,11 @@ def _train_fold(
         valid_te = apply_encoding({col: X_valid[col] for col in TARGET_ENCODE_COLUMNS}, mappings)
         X_valid = pd.concat([X_valid, valid_te], axis=1)
 
+    # target encoding専用の生列（カード数が多すぎてLightGBMの生カテゴリには使わない）は落とす
+    raw_only_cols = [c for c in TARGET_ENCODE_COLUMNS if c not in CATEGORICAL_COLUMNS]
+    X_train = X_train.drop(columns=raw_only_cols, errors="ignore")
+    X_valid = X_valid.drop(columns=raw_only_cols, errors="ignore")
+
     train_set = lgb.Dataset(X_train, label=y_train_log, categorical_feature=CATEGORICAL_COLUMNS)
     valid_set = lgb.Dataset(
         X_valid, label=np.log1p(y_valid), categorical_feature=CATEGORICAL_COLUMNS, reference=train_set

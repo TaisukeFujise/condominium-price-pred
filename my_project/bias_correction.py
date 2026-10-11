@@ -35,8 +35,11 @@ def _horizon(quarter_index: pd.Series, valid_start: int) -> pd.Series:
 
 def _predict_log(model, mappings, features_subset: pd.DataFrame) -> np.ndarray:
     X = features_subset.copy()
-    te = apply_encoding({c: X[c] for c in TARGET_ENCODE_COLUMNS}, mappings)
-    X = pd.concat([X, te], axis=1)
+    if mappings:
+        te = apply_encoding({c: X[c] for c in TARGET_ENCODE_COLUMNS}, mappings)
+        X = pd.concat([X, te], axis=1)
+    raw_only_cols = [c for c in TARGET_ENCODE_COLUMNS if c not in CATEGORICAL_COLUMNS]
+    X = X.drop(columns=raw_only_cols, errors="ignore")
     return model.predict(X, num_iteration=model.best_iteration)
 
 
@@ -125,6 +128,9 @@ def train_production_model(train_df: pd.DataFrame, params: dict | None = None) -
     for col in TARGET_ENCODE_COLUMNS:
         train_features[f"{col}_target_enc"] = oof_encode(train_features[col], y_log)
         mappings[col] = fit_mapping(train_features[col], y_log)
+
+    raw_only_cols = [c for c in TARGET_ENCODE_COLUMNS if c not in CATEGORICAL_COLUMNS]
+    train_features = train_features.drop(columns=raw_only_cols, errors="ignore")
 
     train_set = lgb.Dataset(train_features, label=y_log, categorical_feature=CATEGORICAL_COLUMNS)
     model = lgb.train(params or LGB_PARAMS, train_set, num_boost_round=best_iteration)
