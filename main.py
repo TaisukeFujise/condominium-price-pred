@@ -40,14 +40,20 @@ def train_and_predict(
         rows の予測価格（円）と、学習済みのモデル。
     """
     train, weight = selection.select(train)
-    y = target.make_target(train)
+    # 相場の指数は価格から作るので、学習データだけで決め、検証データと予測する行にも同じものを使う
+    trend = target.fit_trend(train)
+    y = target.make_target(train, trend)
     if valid is not None:
         model = lgbm.fit_with_validation(
-            train[features], y, valid[features], target.make_target(valid), weight
+            train[features],
+            y,
+            valid[features],
+            target.make_target(valid, trend),
+            weight,
         )
     else:
         model = lgbm.fit(train[features], y, num_boost_round, weight)
-    price = target.to_price(lgbm.predict(model, rows[features]), rows)
+    price = target.to_price(lgbm.predict(model, rows[features]), rows, trend)
     price = ensemble.blend([price])
     price = postprocess.postprocess(price, rows, train)
     return price, model
