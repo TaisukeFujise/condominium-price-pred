@@ -5,7 +5,7 @@
 
 import pandas as pd
 
-from src.features import base
+from src.features import base, district_latlon
 
 
 def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -18,6 +18,10 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
         特徴量を足した表と、モデルに入れる列名の一覧。
     """
     features = list(base.FEATURES)
+
+    new = district_latlon.make(df)
+    df = pd.concat([df, new], axis=1)
+    features += list(new.columns)
 
     # 新しい特徴量は、次の形で足す:
     #   new = location.make(df)
