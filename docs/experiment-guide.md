@@ -91,17 +91,31 @@ MAKERS = [
 
 ## 例：モデルを替える
 
-`src/models/<モデル名>.py` に、`src/models/base.py` の `Model` を継承したクラスを書く（`lgbm.py` を写して直すのが早い）。メソッドが 1 つでも足りないと、`main.py` でインスタンスを作った時点でエラーになる。パラメータは `src/models/params.py` に `<モデル名>_PARAMS` として並べる。
+`src/models/<モデル名>.py` に、`src/models/base.py` の `Model` を継承したクラスを書く（`lgbm.py` を写して直すのが早い）。メソッドが 1 つでも足りないと、`main.py` を実行してインスタンスを作った時点（CV の最初の fold）でエラーになる。パラメータは `src/models/params.py` に `<モデル名>_PARAMS` として並べる。
 
-`main.py` の `MODEL` を書き換えると、CV も本番もそのモデルで動く。
+`main.py` の `MODELS` を書き換えると、CV も本番もそのモデルで動く。
 
 ```python
 from src.models.catboost import CatBoost
 
-MODEL = CatBoost
+MODELS = [CatBoost]  # 付け替える
+MODELS = [LGBM, CatBoost]  # 2 つを混ぜる（混ぜ方は src/ensemble.py）
 ```
 
-- `best_iteration` は、early stopping で決まった繰り返しの回数（木の本数・エポック数など）。回数という考え方がないモデル（線形回帰など）では `None` を返す。本番の `fit` にも `None` が渡る
+seed だけ変えた LightGBM を混ぜるときは、`functools.partial` でパラメータを渡す。
+
+```python
+from functools import partial
+
+from src.models.params import LGBM_PARAMS
+
+MODELS = [LGBM, partial(LGBM, {**LGBM_PARAMS, "seed": 1})]
+```
+
+今の `LGBM_PARAMS` には乱数を使う設定（`bagging_fraction`・`feature_fraction` など）がないので、seed だけ変えても同じモデルになる。seed 平均を試すときは、これらも 1 未満にする。
+
+- `best_iteration` は、early stopping で決まった繰り返しの回数（木の本数・エポック数など）。回数という考え方がないモデル（線形回帰など）では `None` を返す
+- 本番の `fit` には、CV で同じモデルを fold ごとに学習したもの（`cv_models`）が渡る。本番は検証データがないので、繰り返しの回数はここから決める（LightGBM は fold の `best_iteration` の平均）。回数がないモデルでは使わなくてよい
 - 重要度を出せないモデルでは、`importance()` で `None` を返す
 
 ## ルール

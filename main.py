@@ -8,16 +8,20 @@ CV が良くなったら PR を出す（docs/experiment-guide.md）。
 実行: uv run python main.py
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
 
 from src import pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
+from src.models.base import Model
 from src.models.lgbm import LGBM
 
-# 使うモデル。src/models/base.py の Model を継承したクラスなら、ここを替えるだけで付け替えられる
-MODEL = LGBM
+# 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
+# 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
+MODELS: list[Callable[[], Model]] = [LGBM]
 
 
 def main() -> None:
@@ -29,41 +33,70 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    scores, best_iterations = [], []
-    for i, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
+    cv_models = _cross_validate(train, features)
+
+    # 本番：全データで学習し直して test を予測する
+    price, test_models = pipeline.fit_and_predict_test(
+        train, test, features, MODELS, cv_models
+    )
+    _print_importance(test_models)
+    _save_submission(test, price)
+
+
+def _cross_validate(train: pd.DataFrame, features: list[str]) -> list[list[Model]]:
+    """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
+
+    Args:
+        train: コンペの学習データ全体。
+        features: モデルに入れる列名の一覧。
+
+    Returns:
+        fold ごとに学習したモデル。[i] は MODELS[i] を fold ごとに学習したもの。
+        本番の木の本数などを決めるのに使う。
+    """
+    scores = []
+    cv_models = [[] for _ in MODELS]
+    for fold, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
         tr, va = train.iloc[tr_index], train.iloc[va_index]
-        price, model = pipeline.fit_and_predict_valid(tr, va, features, MODEL())
+        price, fold_models = pipeline.fit_and_predict_valid(tr, va, features, MODELS)
         score = validation.rmsle(va[TARGET], price)
         scores.append(score)
-        best_iterations.append(model.best_iteration)
+        for model_index, model in enumerate(fold_models):
+            cv_models[model_index].append(model)
+        best_iterations = [model.best_iteration for model in fold_models]
         print(
-            f"fold {i}（検証 {validation.describe_period(va)}）: "
-            f"RMSLE {score:.5f}（best_iteration={best_iterations[-1]}）"
+            f"fold {fold}（検証 {validation.describe_period(va)}）: "
+            f"RMSLE {score:.5f}（best_iteration={best_iterations}）"
         )
     print(
         f"CV RMSLE（{validation.N_FOLDS} fold の平均、検証 {validation.VERSION}）: {np.mean(scores):.5f}"
     )
+    return cv_models
 
-    # 本番：全データで学習し直して test を予測する。
-    # fold ごとに学習データの量が違うので、木の本数は 1 つの fold に合わせず平均を使う。
-    # 繰り返しの回数という考え方がないモデル（best_iteration が None）では None のまま渡す
-    if None in best_iterations:
-        num_boost_round = None
-    else:
-        num_boost_round = round(np.mean(best_iterations))
-    price, model = pipeline.fit_and_predict_test(
-        train, test, features, MODEL(), num_boost_round
-    )
 
-    importance = model.importance()
-    if importance is not None:
-        print("特徴量の重要度:")
-        print(importance.round(3).to_string())
+def _print_importance(test_models: list[Model]) -> None:
+    """本番のモデルごとに、特徴量の重要度を表示する。
 
+    Args:
+        test_models: 本番用に学習したモデル。
+    """
+    for model in test_models:
+        importance = model.importance()
+        if importance is not None:
+            print(f"特徴量の重要度（{type(model).__name__}）:")
+            print(importance.round(3).to_string())
+
+
+def _save_submission(test: pd.DataFrame, price: np.ndarray) -> None:
+    """test の予測価格を、提出用の CSV に保存する。
+
+    Args:
+        test: コンペのテストデータ。
+        price: test の予測価格（円）。
+    """
     SUBMISSION_DIR.mkdir(exist_ok=True)
-    submission_path = SUBMISSION_DIR / "submission.csv"
     pd.DataFrame({"id": test["id"], "price": price}).to_csv(
-        submission_path, index=False
+        SUBMISSION_DIR / "submission.csv", index=False
     )
     print(f"保存しました: submissions/submission.csv（{len(test)} 行）")
 

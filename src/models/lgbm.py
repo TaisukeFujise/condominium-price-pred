@@ -59,24 +59,22 @@ class LGBM(Model):
         self,
         x: pd.DataFrame,
         y: pd.Series,
-        num_boost_round: int | None,
         weight: pd.Series | None,
+        cv_models: list[Self],
     ) -> Self:
-        """本番用に学習する。検証データがないので、木の本数は CV で決めた値を使う。
+        """本番用に学習する。木の本数は、CV の fold ごとの best_iteration の平均を使う。
 
         Args:
             x: 特徴量。
             y: 目的変数。
-            num_boost_round: 木の本数。LightGBM では None にできない。
             weight: 行ごとの重み。None なら全行同じ重み。
+            cv_models: CV で同じモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。
         """
-        if num_boost_round is None:
-            raise ValueError(
-                "LightGBM は木の本数が必要。CV の best_iteration から決めて渡す"
-            )
+        # fold ごとに学習データの量が違うので、1 つの fold に合わせず平均を使う
+        num_boost_round = round(np.mean([m.best_iteration for m in cv_models]))
         self.features = list(x.columns)
         self.booster = lgb.train(
             self.params,
@@ -95,13 +93,13 @@ class LGBM(Model):
             目的変数の予測。
         """
         # best_iteration がない（fit() で作った）モデルでは、全部の木を使う
-        return self.booster.predict(x, num_iteration=self.best_iteration)
+        return self._trained_booster().predict(x, num_iteration=self.best_iteration)
 
     @property
     def best_iteration(self) -> int | None:
         """early stopping で決まった木の本数。fit() で作ったモデルでは None。"""
         # LightGBM は early stopping しなかったとき 0 を返すが、Model の決まりでは None
-        return self.booster.best_iteration or None
+        return self._trained_booster().best_iteration or None
 
     def importance(self) -> pd.Series:
         """特徴量の重要度を計算する。
@@ -110,6 +108,20 @@ class LGBM(Model):
             特徴量ごとの gain の割合（合計 1）。大きい順に並ぶ。
         """
         gain = pd.Series(
-            self.booster.feature_importance(importance_type="gain"), index=self.features
+            self._trained_booster().feature_importance(importance_type="gain"),
+            index=self.features,
         )
         return (gain / gain.sum()).sort_values(ascending=False)
+
+    def _trained_booster(self) -> lgb.Booster:
+        """学習済みの booster を返す。
+
+        Returns:
+            学習済みの booster。学習前なら ValueError を投げる。
+        """
+        # 学習前に呼ぶと 'NoneType' has no attribute という分かりにくいエラーになるので、先に止める
+        if self.booster is None:
+            raise ValueError(
+                "まだ学習していない。先に fit か fit_with_validation を呼ぶ"
+            )
+        return self.booster

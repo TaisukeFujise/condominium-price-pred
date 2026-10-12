@@ -1,7 +1,7 @@
 """モデルが揃えるメソッドの決まり。src/models/ のモデルは、すべて Model を継承する。
 
 pipeline.py と main.py はこのメソッドだけを使うので、Model を継承したクラスを書けば
-main.py の MODEL を書き換えるだけでモデルを付け替えられる（例は lgbm.py）。
+main.py の MODELS に足すだけでモデルを足したり付け替えたりできる（例は lgbm.py）。
 メソッドが 1 つでも足りないと、インスタンスを作った時点でエラーになる。
 """
 
@@ -24,7 +24,7 @@ class Model(ABC):
         y_valid: pd.Series,
         weight: pd.Series | None,
     ) -> Self:
-        """CV 用に学習する。検証データを見て、繰り返しの回数（木の本数など）を決める。
+        """CV 用に学習する。検証データを見て、繰り返しの回数（木の本数など）を決めてよい。
 
         Args:
             x_train: 学習データの特徴量。
@@ -42,16 +42,18 @@ class Model(ABC):
         self,
         x: pd.DataFrame,
         y: pd.Series,
-        num_boost_round: int | None,
         weight: pd.Series | None,
+        cv_models: list[Self],
     ) -> Self:
-        """本番用に学習する。繰り返しの回数は CV で決めた値を使う。
+        """本番用に学習する。検証データがないので、繰り返しの回数などは CV の結果から決める。
+
+        決め方はモデルによって違うので、各モデルの fit に書く（LightGBM は fold の平均）。
 
         Args:
             x: 特徴量。
             y: 目的変数。
-            num_boost_round: 繰り返しの回数。回数という考え方がないモデルでは None。
             weight: 行ごとの重み。None なら全行同じ重み。
+            cv_models: CV で同じモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。
