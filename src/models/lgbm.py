@@ -67,12 +67,16 @@ class LGBM(Model):
         Args:
             x: 特徴量。
             y: 目的変数。
-            num_boost_round: 木の本数。
+            num_boost_round: 木の本数。LightGBM では None にできない。
             weight: 行ごとの重み。None なら全行同じ重み。
 
         Returns:
             学習済みのモデル（自分自身）。
         """
+        if num_boost_round is None:
+            raise ValueError(
+                "LightGBM は木の本数が必要。CV の best_iteration から決めて渡す"
+            )
         self.features = list(x.columns)
         self.booster = lgb.train(
             self.params,
@@ -91,14 +95,13 @@ class LGBM(Model):
             目的変数の予測。
         """
         # best_iteration がない（fit() で作った）モデルでは、全部の木を使う
-        return self.booster.predict(
-            x, num_iteration=self.booster.best_iteration or None
-        )
+        return self.booster.predict(x, num_iteration=self.best_iteration)
 
     @property
     def best_iteration(self) -> int | None:
-        """early stopping で決まった木の本数。"""
-        return self.booster.best_iteration
+        """early stopping で決まった木の本数。fit() で作ったモデルでは None。"""
+        # LightGBM は early stopping しなかったとき 0 を返すが、Model の決まりでは None
+        return self.booster.best_iteration or None
 
     def importance(self) -> pd.Series:
         """特徴量の重要度を計算する。

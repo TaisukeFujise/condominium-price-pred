@@ -26,9 +26,13 @@ def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
     features = list(base.FEATURES)
     for make in MAKERS:
         new = make(df)
-        # 特徴量を足した後の表にもう一度かけると、同じ名前の列が二重にできる
-        duplicated = new.columns[new.columns.isin(df.columns)]
-        assert duplicated.empty, f"同じ名前の列がすでにある: {list(duplicated)}"
+        # 同じ名前の列が二つあると df[features] が両方を返し、モデルに入る列がずれる。
+        # assert は python -O で消えるので、例外を投げる
+        duplicated = new.columns[
+            new.columns.isin(df.columns) | new.columns.duplicated()
+        ]
+        if not duplicated.empty:
+            raise ValueError(f"同じ名前の列が二つできる: {list(duplicated)}")
         df = pd.concat([df, new], axis=1)
         features += list(new.columns)
     return df, features

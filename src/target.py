@@ -23,12 +23,12 @@ def to_target(rows: pd.DataFrame) -> pd.Series:
     return np.log1p(rows[TARGET])
 
 
-def to_price(pred: np.ndarray, rows: pd.DataFrame) -> np.ndarray:
+def to_price(pred: np.ndarray, pred_rows: pd.DataFrame) -> np.ndarray:
     """モデルの予測を円の価格に戻す。to_target の逆変換。
 
     Args:
         pred: モデルの予測。
-        rows: 予測した行。㎡単価を予測する場合などに、面積を掛け戻すのに使う。
+        pred_rows: 予測した行。㎡単価を予測する場合などに、面積を掛け戻すのに使う。
 
     Returns:
         円の価格。
