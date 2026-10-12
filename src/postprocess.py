@@ -8,9 +8,7 @@ import numpy as np
 import pandas as pd
 
 
-def postprocess(
-    price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame
-) -> np.ndarray:
+def adjust(price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame) -> np.ndarray:
     """予測した価格を補正する。今は何もしない。
 
     Args:

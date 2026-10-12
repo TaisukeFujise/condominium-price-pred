@@ -1,6 +1,6 @@
 """目的変数の設計。モデルに何を予測させるか。
 
-make_target と to_price は対になっている。to_price(モデルの予測) で円の価格に戻せるようにする。
+to_target と to_price は対になっている。to_price(モデルの予測) で円の価格に戻せるようにする。
 """
 
 import numpy as np
@@ -9,10 +9,10 @@ import pandas as pd
 from src.config import TARGET
 
 
-def make_target(rows: pd.DataFrame) -> pd.Series:
+def to_target(rows: pd.DataFrame) -> pd.Series:
     """学習に使う目的変数を作る。
 
-    評価指標は RMSLE なので、log1p(価格) を二乗誤差で学習すれば RMSLE を直接小さくできる。
+    評価指標は RMSLE なので、log1p(価格) を学習すれば、log の世界での誤差を小さくすることが RMSLE を小さくすることになる。
 
     Args:
         rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
@@ -24,7 +24,7 @@ def make_target(rows: pd.DataFrame) -> pd.Series:
 
 
 def to_price(pred: np.ndarray, rows: pd.DataFrame) -> np.ndarray:
-    """モデルの予測を円の価格に戻す。make_target の逆変換。
+    """モデルの予測を円の価格に戻す。to_target の逆変換。
 
     Args:
         pred: モデルの予測。

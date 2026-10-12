@@ -85,7 +85,6 @@ MAKERS = [
 ```
 
 - `MAKERS` は上から順に呼ばれる。ほかの特徴量が作った列を使うときは、その後ろに書く
-
 - 文字列のカテゴリ列を足すときは、`make` の中で `.astype("category")` にしておく（LightGBM が種類ごとに分岐するようになる）
 - `df` には train と test の両方が入っている（`is_train` 列で見分ける）
 - 価格を使う特徴量（target encoding など）はここでは作れない。理由は [`workflow.md`](workflow.md) の「価格を使う特徴量」

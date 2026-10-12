@@ -28,7 +28,7 @@ def fit_and_predict_valid(
     """
     tr_used, weight, y = _training_data(tr)
     model = model.fit_with_validation(
-        tr_used[features], y, va[features], target.make_target(va), weight
+        tr_used[features], y, va[features], target.to_target(va), weight
     )
     price = _predict_price(model, va, tr_used, features)
     return price, model
@@ -71,7 +71,7 @@ def _training_data(
         学習に使う行、行ごとの重み、目的変数。
     """
     tr_used, weight = selection.select(tr)
-    return tr_used, weight, target.make_target(tr_used)
+    return tr_used, weight, target.to_target(tr_used)
 
 
 def _predict_price(
@@ -93,4 +93,4 @@ def _predict_price(
     """
     price = target.to_price(model.predict(pred_rows[features]), pred_rows)
     price = ensemble.blend([price])
-    return postprocess.postprocess(price, pred_rows, tr_used)
+    return postprocess.adjust(price, pred_rows, tr_used)
