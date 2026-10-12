@@ -36,7 +36,7 @@ flowchart TD
 | 2 | 特徴量 | **場所**：地区・駅ごとの㎡単価（target encoding）<br>**物件**：間取りの分解（部屋数・LDK の有無）、容積率×面積<br>**集約**：駅・地区ごとの取引件数や平均築年数<br>**外部データ**：駅の乗降客数など（規約の範囲内） | 大 | `src/features/` |
 | 3 | 学習データの選択 | 古い期間を捨てる・重みを下げる。外れ値（特殊な事情の取引、極端な価格）を除く。test に多い成約価格情報を重く見る | 中 | `src/selection.py` |
 | 4 | 目的変数 | ㎡単価を予測して面積を掛け戻す。時間トレンドを引いてから学習し、予測時に足し戻す | **大** | `src/target.py` |
-| 5 | モデルの選択 | CatBoost（カテゴリに強い）、XGBoost、ニューラルネット。損失関数を外れ値に強い Huber にする | 中 | `src/models/lgbm.py` |
+| 5 | モデルの選択 | CatBoost（カテゴリに強い）、XGBoost、ニューラルネット。損失関数を外れ値に強い Huber にする | 中 | `src/models/` |
 | 6 | ハイパーパラメータ | learning_rate、num_leaves、min_data_in_leaf、正則化、feature_fraction。Optuna で探索 | 小〜中 | `src/models/params.py` |
 | 7 | アンサンブル | seed を変えたモデルの平均、異なるモデルの加重平均、stacking | 中 | `src/ensemble.py` |
 | 8 | 後処理 | test の時期に合わせた価格水準の補正（トレンドの延長分を掛ける） | 中 | `src/postprocess.py` |

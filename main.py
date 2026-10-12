@@ -14,7 +14,10 @@ import pandas as pd
 from src import pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
-from src.models import lgbm
+from src.models.lgbm import LGBM
+
+# 使うモデル。src/models/base.py の Model を継承したクラスなら、ここを替えるだけで付け替えられる
+MODEL = LGBM
 
 
 def main() -> None:
@@ -29,10 +32,10 @@ def main() -> None:
     scores, best_iterations = [], []
     for i, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
         tr, va = train.iloc[tr_index], train.iloc[va_index]
-        price, model = pipeline.fit_and_predict_valid(tr, va, features)
+        price, model = pipeline.fit_and_predict_valid(tr, va, features, MODEL())
         score = validation.rmsle(va[TARGET], price)
         scores.append(score)
-        best_iterations.append(lgbm.best_iteration(model))
+        best_iterations.append(model.best_iteration)
         print(
             f"fold {i}（検証 {validation.describe_period(va)}）: "
             f"RMSLE {score:.5f}（best_iteration={best_iterations[-1]}）"
@@ -42,12 +45,20 @@ def main() -> None:
     )
 
     # 本番：全データで学習し直して test を予測する。
-    # fold ごとに学習データの量が違うので、木の本数は 1 つの fold に合わせず平均を使う
-    num_boost_round = round(np.mean(best_iterations))
-    price, model = pipeline.fit_and_predict_test(train, test, features, num_boost_round)
+    # fold ごとに学習データの量が違うので、木の本数は 1 つの fold に合わせず平均を使う。
+    # 繰り返しの回数という考え方がないモデル（best_iteration が None）では None のまま渡す
+    if None in best_iterations:
+        num_boost_round = None
+    else:
+        num_boost_round = round(np.mean(best_iterations))
+    price, model = pipeline.fit_and_predict_test(
+        train, test, features, MODEL(), num_boost_round
+    )
 
-    print("特徴量の重要度（gain）:")
-    print(lgbm.importance(model, features).round(3).to_string())
+    importance = model.importance()
+    if importance is not None:
+        print("特徴量の重要度:")
+        print(importance.round(3).to_string())
 
     SUBMISSION_DIR.mkdir(exist_ok=True)
     submission_path = SUBMISSION_DIR / "submission.csv"

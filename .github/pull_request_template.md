@@ -10,7 +10,7 @@
 - [ ] 2. 特徴量（`src/features/`）
 - [ ] 3. 学習データの選択（`src/selection.py`）
 - [ ] 4. 目的変数（`src/target.py`）
-- [ ] 5. モデル（`src/models/lgbm.py` など）
+- [ ] 5. モデル（`src/models/`）
 - [ ] 6. パラメータ（`src/models/params.py`）
 - [ ] 7. アンサンブル（`src/ensemble.py`）
 - [ ] 8. 後処理（`src/postprocess.py`）

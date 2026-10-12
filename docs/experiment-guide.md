@@ -14,7 +14,7 @@
 | `src/features/` | 2. 特徴量（テーマごとにファイルを分ける） |
 | `src/selection.py` | 3. 学習データの選択（行の除外・重み） |
 | `src/target.py` | 4. 目的変数（何を予測させるか、価格への戻し方） |
-| `src/models/lgbm.py` | 5. モデル（学習と予測） |
+| `src/models/` | 5. モデル（学習と予測）。揃えるメソッドは `base.py`、LightGBM は `lgbm.py` |
 | `src/models/params.py` | 6. ハイパーパラメータ |
 | `src/ensemble.py` | 7. アンサンブル |
 | `src/postprocess.py` | 8. 後処理（予測値の補正） |
@@ -89,6 +89,21 @@ MAKERS = [
 - 文字列のカテゴリ列を足すときは、`make` の中で `.astype("category")` にしておく（LightGBM が種類ごとに分岐するようになる）
 - `df` には train と test の両方が入っている（`is_train` 列で見分ける）
 - 価格を使う特徴量（target encoding など）はここでは作れない。理由は [`workflow.md`](workflow.md) の「価格を使う特徴量」
+
+## 例：モデルを替える
+
+`src/models/<モデル名>.py` に、`src/models/base.py` の `Model` を継承したクラスを書く（`lgbm.py` を写して直すのが早い）。メソッドが 1 つでも足りないと、`main.py` でインスタンスを作った時点でエラーになる。パラメータは `src/models/params.py` に `<モデル名>_PARAMS` として並べる。
+
+`main.py` の `MODEL` を書き換えると、CV も本番もそのモデルで動く。
+
+```python
+from src.models.catboost import CatBoost
+
+MODEL = CatBoost
+```
+
+- `best_iteration` は、early stopping で決まった繰り返しの回数（木の本数・エポック数など）。回数という考え方がないモデル（線形回帰など）では `None` を返す。本番の `fit` にも `None` が渡る
+- 重要度を出せないモデルでは、`importance()` で `None` を返す
 
 ## ルール
 
