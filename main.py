@@ -18,38 +18,38 @@ from src.model import ensemble, lgbm, postprocess, target
 
 
 def train_and_predict(
-    train: pd.DataFrame,
-    rows: pd.DataFrame,
+    tr: pd.DataFrame,
+    pred_rows: pd.DataFrame,
     features: list[str],
     num_boost_round: int | None = None,
-    valid: pd.DataFrame | None = None,
+    va: pd.DataFrame | None = None,
 ) -> tuple[np.ndarray, lgb.Booster]:
     """学習データの選択から後処理までを通して、価格を予測する。
 
-    valid を渡すと CV 用（early stopping で木の本数を決める）、
+    va を渡すと CV 用（early stopping で木の本数を決める）、
     num_boost_round を渡すと本番用（その本数で学習する）。
 
     Args:
-        train: 学習データ。
-        rows: 予測する行。
+        tr: 学習データ。CV では fold の学習データ、本番では train 全体。
+        pred_rows: 予測する行。
         features: モデルに入れる列名の一覧。
         num_boost_round: 本番用の木の本数。
-        valid: CV 用の検証データ。
+        va: CV 用の検証データ。
 
     Returns:
-        rows の予測価格（円）と、学習済みのモデル。
+        pred_rows の予測価格（円）と、学習済みのモデル。
     """
-    train, weight = selection.select(train)
-    y = target.make_target(train)
-    if valid is not None:
+    tr_used, weight = selection.select(tr)
+    y = target.make_target(tr_used)
+    if va is not None:
         model = lgbm.fit_with_validation(
-            train[features], y, valid[features], target.make_target(valid), weight
+            tr_used[features], y, va[features], target.make_target(va), weight
         )
     else:
-        model = lgbm.fit(train[features], y, num_boost_round, weight)
-    price = target.to_price(lgbm.predict(model, rows[features]), rows)
+        model = lgbm.fit(tr_used[features], y, num_boost_round, weight)
+    price = target.to_price(lgbm.predict(model, pred_rows[features]), pred_rows)
     price = ensemble.blend([price])
-    price = postprocess.postprocess(price, rows, train)
+    price = postprocess.postprocess(price, pred_rows, tr_used)
     return price, model
 
 
@@ -63,16 +63,15 @@ def main() -> None:
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
     scores, best_iterations = [], []
-    for i, (train_idx, valid_idx) in enumerate(validation.time_series_folds(train)):
-        fold_train, fold_valid = train.loc[train_idx], train.loc[valid_idx]
-        price, model = train_and_predict(
-            fold_train, fold_valid, features, valid=fold_valid
-        )
-        score = validation.rmsle(fold_valid[TARGET], price)
+    for i, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
+        # time_series_folds は位置を返す。train は reset_index 済みなので loc で引ける
+        tr, va = train.loc[tr_index], train.loc[va_index]
+        price, model = train_and_predict(tr, va, features, va=va)
+        score = validation.rmsle(va[TARGET], price)
         scores.append(score)
         best_iterations.append(lgbm.best_iteration(model))
         print(
-            f"fold {i}（検証 {validation.describe_period(fold_valid)}）: "
+            f"fold {i}（検証 {validation.describe_period(va)}）: "
             f"RMSLE {score:.5f}（best_iteration={best_iterations[-1]}）"
         )
     print(

@@ -31,6 +31,8 @@
 - 関数の引数と戻り値には型ヒントを書く（例：`def make(df: pd.DataFrame) -> pd.DataFrame:`）
 - docstring は Google スタイルで書く。1 行目に何をするかを 1 文で書き、引数があれば `Args:`、戻り値があれば `Returns:` を書く。引数の型は型ヒントに書き、docstring では繰り返さない
 - コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く
+- データの変数名をそろえる。`train` / `test` はコンペのデータ全体（index は 0 からの連番）だけに使う。fold の学習データ・検証データは `tr` / `va`、その行番号は `tr_index` / `va_index`、予測する行は `pred_rows`
+- `time_series_folds` が返す行番号は位置（0 始まり）。index が連番でない表（`tr` など）では `.loc` で引かない
 - コードを変えたら `uv run ruff format .` と `uv run ruff check --fix .` を実行し、指摘がない状態にする
 
 ## 実験のルール
@@ -40,7 +42,7 @@
 - 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる。v1 は暫定で、CV と LB が連動するかを確かめてからチームで確定する
 - 実験 1 つにつきブランチ 1 本。一度に変えるのは 1 つの工程の 1 つの変更だけ
 - CV が良くなったら PR を出し、本文に main の CV とこの PR の CV を書く。良くならなかった実験も PR を出し、結果を書いて閉じる（`不採用` ラベル）
-- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`src/features/build.py` の `build_features()` に足す
+- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`src/features/build.py` の `MAKERS` に足す
 - `src/data/preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
 - test は train より未来の期間。ランダム分割で検証しない
 - 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する。工程 2（fold に分ける前）では作らない

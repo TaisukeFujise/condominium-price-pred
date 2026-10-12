@@ -71,21 +71,17 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
     return out
 ```
 
-`src/features/build.py` の `build_features()` に 3 行足す。
+`src/features/build.py` の import と `MAKERS` に 1 行ずつ足す。`build_features()` は `MAKERS` の関数を上から順に呼び、返ってきた列を表とモデルに入れる列名の一覧に足す。
 
 ```python
 from src.features import base, station
 
-
-def build_features(df):
-    features = list(base.FEATURES)
-
-    new = station.make(df)
-    df = pd.concat([df, new], axis=1)
-    features += list(new.columns)
-
-    return df, features
+MAKERS = [
+    station.make,
+]
 ```
+
+- `MAKERS` は上から順に呼ばれる。ほかの特徴量が作った列を使うときは、その後ろに書く
 
 - 文字列のカテゴリ列を足すときは、`make` の中で `.astype("category")` にしておく（LightGBM が種類ごとに分岐するようになる）
 - `df` には train と test の両方が入っている（`is_train` 列で見分ける）

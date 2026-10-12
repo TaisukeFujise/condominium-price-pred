@@ -9,18 +9,18 @@ import pandas as pd
 from src.config import TARGET
 
 
-def make_target(train: pd.DataFrame) -> pd.Series:
+def make_target(rows: pd.DataFrame) -> pd.Series:
     """学習に使う目的変数を作る。
 
     評価指標は RMSLE なので、log1p(価格) を二乗誤差で学習すれば RMSLE を直接小さくできる。
 
     Args:
-        train: 価格の列を含む学習データ。
+        rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
 
     Returns:
         目的変数（log1p した価格）。
     """
-    return np.log1p(train[TARGET])
+    return np.log1p(rows[TARGET])
 
 
 def to_price(pred: np.ndarray, rows: pd.DataFrame) -> np.ndarray:
