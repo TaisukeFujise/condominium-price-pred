@@ -1,56 +1,27 @@
 """学習から提出ファイルの作成までの流れ。各工程の中身は src/ にある。
 
+工程 3〜8（学習データの選択から後処理まで）のつなぎ方は src/pipeline.py。
+
 精度改善は、該当する工程のファイルを直してこのファイルを実行し、
 CV が良くなったら PR を出す（docs/experiment-guide.md）。
 
 実行: uv run python main.py
 """
 
-import lightgbm as lgb
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
 
-from src import validation
+from src import pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
-from src.data import preprocess, selection
 from src.features.build import build_features
-from src.model import ensemble, lgbm, postprocess, target
+from src.models.base import Model
+from src.models.lgbm import LGBM
 
-
-def train_and_predict(
-    train: pd.DataFrame,
-    rows: pd.DataFrame,
-    features: list[str],
-    num_boost_round: int | None = None,
-    valid: pd.DataFrame | None = None,
-) -> tuple[np.ndarray, lgb.Booster]:
-    """学習データの選択から後処理までを通して、価格を予測する。
-
-    valid を渡すと CV 用（early stopping で木の本数を決める）、
-    num_boost_round を渡すと本番用（その本数で学習する）。
-
-    Args:
-        train: 学習データ。
-        rows: 予測する行。
-        features: モデルに入れる列名の一覧。
-        num_boost_round: 本番用の木の本数。
-        valid: CV 用の検証データ。
-
-    Returns:
-        rows の予測価格（円）と、学習済みのモデル。
-    """
-    train, weight = selection.select(train)
-    y = target.make_target(train)
-    if valid is not None:
-        model = lgbm.fit_with_validation(
-            train[features], y, valid[features], target.make_target(valid), weight
-        )
-    else:
-        model = lgbm.fit(train[features], y, num_boost_round, weight)
-    price = target.to_price(lgbm.predict(model, rows[features]), rows)
-    price = ensemble.blend([price])
-    price = postprocess.postprocess(price, rows, train)
-    return price, model
+# 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
+# 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
+MODELS: list[Callable[[], Model]] = [LGBM]
 
 
 def main() -> None:
@@ -62,37 +33,70 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    scores, best_iterations = [], []
-    for i, (train_idx, valid_idx) in enumerate(validation.time_series_folds(train)):
-        fold_train, fold_valid = train.loc[train_idx], train.loc[valid_idx]
-        price, model = train_and_predict(
-            fold_train, fold_valid, features, valid=fold_valid
-        )
-        score = validation.rmsle(fold_valid[TARGET], price)
+    cv_models = _cross_validate(train, features)
+
+    # 本番：全データで学習し直して test を予測する
+    price, test_models = pipeline.fit_and_predict_test(
+        train, test, features, MODELS, cv_models
+    )
+    _print_importance(test_models)
+    _save_submission(test, price)
+
+
+def _cross_validate(train: pd.DataFrame, features: list[str]) -> list[list[Model]]:
+    """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
+
+    Args:
+        train: コンペの学習データ全体。
+        features: モデルに入れる列名の一覧。
+
+    Returns:
+        fold ごとに学習したモデル。[i] は MODELS[i] を fold ごとに学習したもの。
+        本番の木の本数などを決めるのに使う。
+    """
+    scores = []
+    cv_models = [[] for _ in MODELS]
+    for fold, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
+        tr, va = train.iloc[tr_index], train.iloc[va_index]
+        price, fold_models = pipeline.fit_and_predict_valid(tr, va, features, MODELS)
+        score = validation.rmsle(va[TARGET], price)
         scores.append(score)
-        best_iterations.append(lgbm.best_iteration(model))
+        for model_index, model in enumerate(fold_models):
+            cv_models[model_index].append(model)
+        best_iterations = [model.best_iteration for model in fold_models]
         print(
-            f"fold {i}（検証 {validation.describe_period(fold_valid)}）: "
-            f"RMSLE {score:.5f}（best_iteration={best_iterations[-1]}）"
+            f"fold {fold}（検証 {validation.describe_period(va)}）: "
+            f"RMSLE {score:.5f}（best_iteration={best_iterations}）"
         )
     print(
         f"CV RMSLE（{validation.N_FOLDS} fold の平均、検証 {validation.VERSION}）: {np.mean(scores):.5f}"
     )
+    return cv_models
 
-    # 本番：全データで学習し直して test を予測する。
-    # fold ごとに学習データの量が違うので、木の本数は 1 つの fold に合わせず平均を使う
-    num_boost_round = round(np.mean(best_iterations))
-    price, model = train_and_predict(
-        train, test, features, num_boost_round=num_boost_round
-    )
 
-    print("特徴量の重要度（gain）:")
-    print(lgbm.importance(model, features).round(3).to_string())
+def _print_importance(test_models: list[Model]) -> None:
+    """本番のモデルごとに、特徴量の重要度を表示する。
 
+    Args:
+        test_models: 本番用に学習したモデル。
+    """
+    for model in test_models:
+        importance = model.importance()
+        if importance is not None:
+            print(f"特徴量の重要度（{type(model).__name__}）:")
+            print(importance.round(3).to_string())
+
+
+def _save_submission(test: pd.DataFrame, price: np.ndarray) -> None:
+    """test の予測価格を、提出用の CSV に保存する。
+
+    Args:
+        test: コンペのテストデータ。
+        price: test の予測価格（円）。
+    """
     SUBMISSION_DIR.mkdir(exist_ok=True)
-    submission_path = SUBMISSION_DIR / "submission.csv"
     pd.DataFrame({"id": test["id"], "price": price}).to_csv(
-        submission_path, index=False
+        SUBMISSION_DIR / "submission.csv", index=False
     )
     print(f"保存しました: submissions/submission.csv（{len(test)} 行）")
 
