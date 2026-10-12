@@ -9,11 +9,12 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
 from src import target, validation
+from src.config import TARGET
 from src.models.lgbm import LGBM
 
 
 def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression:
-    """予測値（log）から実際値（log）への isotonic 較正を、学習データの中だけで学習する。
+    """予測価格の log から実際の価格の log への isotonic 較正を、学習データの中だけで学習する。
 
     tr の中にさらに内側のホールドアウト（直近 3 四半期）を作り、そこでの予測と実際の値を対応させる。
     安い物件を過大予測し、高い物件を過小予測するという価格帯による系統的なズレ
@@ -36,8 +37,11 @@ def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression
         target.to_target(inner_va),
         None,
     )
-    pred_log = model.predict(inner_va[features])
-    actual_log = target.to_target(inner_va).to_numpy()
+    # adjust には円の価格が来るので、対応表も円の価格の log で作る。
+    # モデルの出力（to_target の世界）のまま作ると、目的変数を変えたときに目盛りがずれる
+    pred_price = target.to_price(model.predict(inner_va[features]), inner_va)
+    pred_log = np.log1p(pred_price)
+    actual_log = np.log1p(inner_va[TARGET].to_numpy())
 
     calibrator = IsotonicRegression(out_of_bounds="clip")
     calibrator.fit(pred_log, actual_log)
