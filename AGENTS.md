@@ -23,7 +23,7 @@
 
 - Python 3.12 を uv で管理する。パッケージの追加は `uv add <package>`。`pip install` は使わない
 - 実行：`uv run python main.py`（CV の表示から `submissions/submission.csv` の作成まで）
-- `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/data/`（前処理・学習データの選択）、`src/features/`（特徴量）、`src/model/`（目的変数・モデル・パラメータ・アンサンブル・後処理）。学習データの選択から後処理までのつなぎ方は `src/pipeline.py`
+- `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/` に工程ごとに 1 ファイルある。ファイルが増えていく工程だけディレクトリにする（`src/features/` は特徴量のテーマごと、`src/models/` はモデルごと）。学習データの選択から後処理まで（fold ごとに動く工程）のつなぎ方は `src/pipeline.py`
 - `submissions/` は git の管理外
 
 ## コードの書き方
@@ -43,7 +43,7 @@
 - 実験 1 つにつきブランチ 1 本。一度に変えるのは 1 つの工程の 1 つの変更だけ
 - CV が良くなったら PR を出し、本文に main の CV とこの PR の CV を書く。良くならなかった実験も PR を出し、結果を書いて閉じる（`不採用` ラベル）
 - 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`src/features/build.py` の `MAKERS` に足す
-- `src/data/preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
+- `src/preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
 - test は train より未来の期間。ランダム分割で検証しない
 - 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する。工程 2（fold に分ける前）では作らない
 - 認証情報（`kaggle.json` など）はコミットしない。main へは PR で入れる

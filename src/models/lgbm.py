@@ -4,7 +4,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from src.model.params import PARAMS
+from src.models.params import LGBM_PARAMS
 
 
 def fit_with_validation(
@@ -27,7 +27,7 @@ def fit_with_validation(
         学習済みのモデル。best_iteration に最良の木の本数が入る。
     """
     return lgb.train(
-        PARAMS,
+        LGBM_PARAMS,
         lgb.Dataset(x_train, y_train, weight=weight),
         num_boost_round=10000,
         valid_sets=[lgb.Dataset(x_valid, y_valid)],
@@ -53,7 +53,7 @@ def fit(
         学習済みのモデル。
     """
     return lgb.train(
-        PARAMS, lgb.Dataset(x, y, weight=weight), num_boost_round=num_boost_round
+        LGBM_PARAMS, lgb.Dataset(x, y, weight=weight), num_boost_round=num_boost_round
     )
 
 

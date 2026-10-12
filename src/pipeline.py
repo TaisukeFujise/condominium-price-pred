@@ -9,8 +9,8 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from src.data import selection
-from src.model import ensemble, lgbm, postprocess, target
+from src import ensemble, postprocess, selection, target
+from src.models import lgbm
 
 
 def fit_and_predict_valid(

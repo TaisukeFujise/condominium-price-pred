@@ -11,11 +11,10 @@ CV が良くなったら PR を出す（docs/experiment-guide.md）。
 import numpy as np
 import pandas as pd
 
-from src import pipeline, validation
+from src import pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
-from src.data import preprocess
 from src.features.build import build_features
-from src.model import lgbm
+from src.models import lgbm
 
 
 def main() -> None:

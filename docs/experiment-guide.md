@@ -4,18 +4,20 @@
 
 ## 構成
 
-`main.py` が工程を順に呼ぶ。各工程の中身は `src/` の 3 つのフォルダにある（工程の番号は [`workflow.md`](workflow.md) と同じ）。
+`main.py` が工程を順に呼ぶ。各工程の中身は `src/` に工程ごとに 1 ファイルある（工程の番号は [`workflow.md`](workflow.md) と同じ）。ファイルが増えていく工程だけディレクトリにしている（特徴量はテーマごと、モデルは種類ごと）。
+
+工程 1・2 は fold に分ける前に train と test の全行に対して 1 回だけ動くので、価格を使えない。工程 3〜8 は `src/pipeline.py` から fold ごとに呼ばれ、その fold の学習データだけを使う。
 
 | ファイル | 工程 |
 |---|---|
-| `src/data/preprocess.py` | 1. データの読み込みと前処理 |
+| `src/preprocess.py` | 1. データの読み込みと前処理 |
 | `src/features/` | 2. 特徴量（テーマごとにファイルを分ける） |
-| `src/data/selection.py` | 3. 学習データの選択（行の除外・重み） |
-| `src/model/target.py` | 4. 目的変数（何を予測させるか、価格への戻し方） |
-| `src/model/lgbm.py` | 5. モデル（学習と予測） |
-| `src/model/params.py` | 6. ハイパーパラメータ |
-| `src/model/ensemble.py` | 7. アンサンブル |
-| `src/model/postprocess.py` | 8. 後処理（予測値の補正） |
+| `src/selection.py` | 3. 学習データの選択（行の除外・重み） |
+| `src/target.py` | 4. 目的変数（何を予測させるか、価格への戻し方） |
+| `src/models/lgbm.py` | 5. モデル（学習と予測） |
+| `src/models/params.py` | 6. ハイパーパラメータ |
+| `src/ensemble.py` | 7. アンサンブル |
+| `src/postprocess.py` | 8. 後処理（予測値の補正） |
 | `src/pipeline.py` | 工程 3〜8 のつなぎ方（CV 用と本番用の入口） |
 | `src/validation.py` | 検証（時系列 CV）。チームの合意なしに変えない |
 | `src/config.py` | パス・目的変数の列名・seed |
