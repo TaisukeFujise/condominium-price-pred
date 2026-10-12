@@ -121,4 +121,4 @@ def _predict_price(
         for model in models
     ]
     price = ensemble.blend(preds)
-    return postprocess.adjust(price, pred_rows, tr_used)
+    return postprocess.adjust(price, pred_rows, tr_used, features)

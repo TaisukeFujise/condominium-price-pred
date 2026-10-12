@@ -9,11 +9,10 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
 from src import target, validation
-from src.features.build import build_features
 from src.models.lgbm import LGBM
 
 
-def _fit_calibrator(tr: pd.DataFrame) -> IsotonicRegression:
+def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression:
     """予測値（log）から実際値（log）への isotonic 較正を、学習データの中だけで学習する。
 
     tr の中にさらに内側のホールドアウト（直近 3 四半期）を作り、そこでの予測と実際の値を対応させる。
@@ -22,11 +21,11 @@ def _fit_calibrator(tr: pd.DataFrame) -> IsotonicRegression:
 
     Args:
         tr: そのときの学習データ（CV では fold の学習データ、本番では train 全体）。
+        features: モデルに入れる列名の一覧。
 
     Returns:
         学習済みの IsotonicRegression。
     """
-    _, features = build_features(tr)
     inner_tr_index, inner_va_index = validation.time_series_folds(tr)[0]
     inner_tr, inner_va = tr.iloc[inner_tr_index], tr.iloc[inner_va_index]
 
@@ -45,18 +44,21 @@ def _fit_calibrator(tr: pd.DataFrame) -> IsotonicRegression:
     return calibrator
 
 
-def adjust(price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame) -> np.ndarray:
+def adjust(
+    price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame, features: list[str]
+) -> np.ndarray:
     """予測した価格を、isotonic 較正で補正する。
 
     Args:
         price: 予測した価格（円）。
         pred_rows: 予測した行。
         tr: そのときの学習データ。補正に使ってよいのはこれだけ。
+        features: モデルに入れる列名の一覧。
 
     Returns:
         補正した価格（円）。
     """
-    calibrator = _fit_calibrator(tr)
+    calibrator = _fit_calibrator(tr, features)
     pred_log = np.log1p(price)
     calibrated_log = calibrator.predict(pred_log)
     return np.expm1(calibrated_log)
