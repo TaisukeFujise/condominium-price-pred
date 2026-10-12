@@ -29,7 +29,7 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
 
     Returns:
         (学習に使う行番号, 検証に使う行番号) の組の一覧。新しい期間の fold から順に並ぶ。
-        行番号は 0 始まりの位置で、index のラベルではない。
+        行番号は 0 始まりで、index のラベルではない。.iloc で引く。
     """
     quarter = train["経過四半期"]
     last = quarter.max()

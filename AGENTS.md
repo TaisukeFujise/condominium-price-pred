@@ -23,7 +23,7 @@
 
 - Python 3.12 を uv で管理する。パッケージの追加は `uv add <package>`。`pip install` は使わない
 - 実行：`uv run python main.py`（CV の表示から `submissions/submission.csv` の作成まで）
-- `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/data/`（前処理・学習データの選択）、`src/features/`（特徴量）、`src/model/`（目的変数・モデル・パラメータ・アンサンブル・後処理）
+- `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/data/`（前処理・学習データの選択）、`src/features/`（特徴量）、`src/model/`（目的変数・モデル・パラメータ・アンサンブル・後処理）。学習データの選択から後処理までのつなぎ方は `src/pipeline.py`
 - `submissions/` は git の管理外
 
 ## コードの書き方
@@ -32,7 +32,7 @@
 - docstring は Google スタイルで書く。1 行目に何をするかを 1 文で書き、引数があれば `Args:`、戻り値があれば `Returns:` を書く。引数の型は型ヒントに書き、docstring では繰り返さない
 - コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く
 - データの変数名をそろえる。`train` / `test` はコンペのデータ全体（index は 0 からの連番）だけに使う。fold の学習データ・検証データは `tr` / `va`、その行番号は `tr_index` / `va_index`、予測する行は `pred_rows`
-- `time_series_folds` が返す行番号は位置（0 始まり）。index が連番でない表（`tr` など）では `.loc` で引かない
+- `time_series_folds` が返すのは 0 始まりの行番号の配列で、index のラベルではない。表から引くときは `.loc` ではなく `.iloc` を使う
 - コードを変えたら `uv run ruff format .` と `uv run ruff check --fix .` を実行し、指摘がない状態にする
 
 ## 実験のルール

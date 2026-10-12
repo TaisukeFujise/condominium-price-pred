@@ -16,6 +16,7 @@
 | `src/model/params.py` | 6. ハイパーパラメータ |
 | `src/model/ensemble.py` | 7. アンサンブル |
 | `src/model/postprocess.py` | 8. 後処理（予測値の補正） |
+| `src/pipeline.py` | 工程 3〜8 のつなぎ方（CV 用と本番用の入口） |
 | `src/validation.py` | 検証（時系列 CV）。チームの合意なしに変えない |
 | `src/config.py` | パス・目的変数の列名・seed |
 
