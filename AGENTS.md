@@ -16,21 +16,24 @@
 
 - 東京都の中古マンション等の取引価格（総額）を予測する。詳細は `utokyo-mlapp-2026-ex1/README.md`
 - 学習：2019年第1四半期〜2025年第2四半期、テスト：2025年第3四半期〜2026年第1四半期
-- 評価指標は RMSLE。目的変数を `log1p` してから二乗誤差で学習し、予測は `expm1` で円に戻す
+- 評価指標は RMSLE。目的変数を `log1p` してから学習し（損失関数は `src/models/params.py`）、予測は `expm1` で円に戻す
 - 各列の値の分布と注意点は `docs/columns.md`
 
 ## 開発環境
 
 - Python 3.12 を uv で管理する。パッケージの追加は `uv add <package>`。`pip install` は使わない
 - 実行：`uv run python main.py`（CV の表示から `submissions/submission.csv` の作成まで）
-- `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/data/`（前処理・学習データの選択）、`src/features/`（特徴量）、`src/model/`（目的変数・モデル・パラメータ・アンサンブル・後処理）
+- `main.py` は工程を順に呼ぶだけ。各工程の中身は `src/` に工程ごとに 1 ファイルある。ファイルが増えていく工程だけディレクトリにする（`src/features/` は特徴量のテーマごと、`src/models/` はモデルごと）。学習データの選択から後処理まで（fold ごとに動く工程）のつなぎ方は `src/pipeline.py`
 - `submissions/` は git の管理外
 
 ## コードの書き方
 
 - 関数の引数と戻り値には型ヒントを書く（例：`def make(df: pd.DataFrame) -> pd.DataFrame:`）
 - docstring は Google スタイルで書く。1 行目に何をするかを 1 文で書き、引数があれば `Args:`、戻り値があれば `Returns:` を書く。引数の型は型ヒントに書き、docstring では繰り返さない
-- コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く
+- コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く。例外として、実験のたびに書き足す場所（`main.py` の `MODELS`、`src/features/build.py` の `MAKERS`）には、足し方を書いてよい（初めて触る人が迷わないように）
+- ファイルの外から呼ばない関数は、名前を `_` で始める（例：`main.py` の `_cross_validate`、`src/pipeline.py` の `_training_data`）。外から呼ぶ関数だけを見れば、そのファイルの使い方が分かるようにするため
+- データの変数名をそろえる。`train` / `test` はコンペのデータ全体（index は 0 からの連番）だけに使う。fold の学習データ・検証データは `tr` / `va`、その行番号は `tr_index` / `va_index`、予測する行は `pred_rows`
+- `time_series_folds` が返すのは 0 始まりの行番号の配列で、index のラベルではない。表から引くときは `.loc` ではなく `.iloc` を使う
 - コードを変えたら `uv run ruff format .` と `uv run ruff check --fix .` を実行し、指摘がない状態にする
 
 ## 実験のルール
@@ -40,8 +43,8 @@
 - 検証は `src/validation.py` の時系列 CV（3 fold）を使う。チームの合意なしに変えない。変えるときは `VERSION` を上げる。v1 は暫定で、CV と LB が連動するかを確かめてからチームで確定する
 - 実験 1 つにつきブランチ 1 本。一度に変えるのは 1 つの工程の 1 つの変更だけ
 - CV が良くなったら PR を出し、本文に main の CV とこの PR の CV を書く。良くならなかった実験も PR を出し、結果を書いて閉じる（`不採用` ラベル）
-- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`src/features/build.py` の `build_features()` に足す
-- `src/data/preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
+- 特徴量は `src/features/<テーマ>.py` に「元の表を受け取り、新しい列だけの表を返す関数」として書き、`src/features/build.py` の `MAKERS` に足す
+- `src/preprocess.py` は全員の結果に影響する。変えるときは PR で合意する
 - test は train より未来の期間。ランダム分割で検証しない
 - 価格を使う特徴量（target encoding など）は、fold ごとにその fold の学習データだけで計算する。工程 2（fold に分ける前）では作らない
 - 認証情報（`kaggle.json` など）はコミットしない。main へは PR で入れる
