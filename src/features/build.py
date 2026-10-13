@@ -7,11 +7,11 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from src.features import base
+from src.features import base, layout
 
 # 上から順に作る。後の関数は、前の関数が足した列を使える。
 # 新しい特徴量は、import に足してから、ここに 1 行足す（例: location.make,）
-MAKERS: list[Callable[[pd.DataFrame], pd.DataFrame]] = []
+MAKERS: list[Callable[[pd.DataFrame], pd.DataFrame]] = [layout.make]
 
 
 def build_features(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
