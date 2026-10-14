@@ -161,30 +161,25 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
     return Trend(level, slope, int(tr[QUARTER].max()), ward_group)
 
 
-def to_target(rows: pd.DataFrame, trend: Trend | None = None) -> pd.Series:
+def to_target(rows: pd.DataFrame, trend: Trend) -> pd.Series:
     """学習に使う目的変数を作る。
 
     総額を面積で割ることで、物件規模を除いた㎡単価を学習する。
-    trend が渡された場合、相場の指数を引き、決定木にはその時期の相場に比べた㎡単価を予測させる。
+    さらに相場の指数を引き、決定木にはその時期の相場に比べた㎡単価を予測させる。
 
     Args:
         rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
         trend: fit_trend で学習データから作った指数。
 
     Returns:
-        目的変数（log した㎡単価、または指数を引いた値）。
+        目的変数（log した㎡単価から指数を引いた値）。
     """
     unit_price = rows[TARGET] / rows["面積_数値"]
-    log_unit = np.log(unit_price)
-    if trend is not None:
-        return log_unit - trend.log_index(rows)
-    return log_unit
+    return np.log(unit_price) - trend.log_index(rows)
 
 
-def to_price(
-    pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend | None = None
-) -> np.ndarray:
-    """モデルの予測した㎡単価に面積を掛けて総額に戻す。to_target の逆変換。
+def to_price(pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend) -> np.ndarray:
+    """モデルの予測に指数を足して㎡単価に戻し、面積を掛けて総額にする。to_target の逆変換。
 
     Args:
         pred: モデルの予測。
@@ -194,8 +189,5 @@ def to_price(
     Returns:
         円の価格。
     """
-    pred_log = pred
-    if trend is not None:
-        pred_log = pred + trend.log_index(pred_rows)
-    unit_price = np.exp(pred_log)
+    unit_price = np.exp(pred + trend.log_index(pred_rows))
     return unit_price * pred_rows["面積_数値"].to_numpy()
