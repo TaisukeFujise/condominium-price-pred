@@ -30,16 +30,19 @@ def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression
     inner_tr_index, inner_va_index = validation.time_series_folds(tr)[0]
     inner_tr, inner_va = tr.iloc[inner_tr_index], tr.iloc[inner_va_index]
 
+    inner_trend = target.fit_trend(inner_tr)
     model = LGBM().fit_with_validation(
         inner_tr[features],
-        target.to_target(inner_tr),
+        target.to_target(inner_tr, inner_trend),
         inner_va[features],
-        target.to_target(inner_va),
+        target.to_target(inner_va, inner_trend),
         None,
     )
     # adjust には円の価格が来るので、対応表も円の価格の log で作る。
     # モデルの出力（to_target の世界）のまま作ると、目的変数を変えたときに目盛りがずれる
-    pred_price = target.to_price(model.predict(inner_va[features]), inner_va)
+    pred_price = target.to_price(
+        model.predict(inner_va[features]), inner_va, inner_trend
+    )
     pred_log = np.log1p(pred_price)
     actual_log = np.log1p(inner_va[TARGET].to_numpy())
 
