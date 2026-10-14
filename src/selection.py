@@ -1,5 +1,7 @@
 """学習データの選択。どの行を、どの重みで学習に使うか。
 
+列（特徴量）の選択は src/features/ で行う。ここは行の選択。
+
 CV では fold ごとに、その fold の学習データだけに対して呼ばれる。
 """
 
@@ -37,28 +39,28 @@ def _band(values: pd.Series, bins: list[int]) -> pd.Series:
     return pd.cut(values, bins).astype(str)
 
 
-def market_deviation(train: pd.DataFrame) -> pd.Series:
+def _market_deviation(tr: pd.DataFrame) -> pd.Series:
     """各行の log(㎡単価) が、似た物件の相場（中央値）からどれだけずれているかを計算する。
 
     Args:
-        train: 価格の列を含む学習データ。
+        tr: 価格の列を含む学習データ。
 
     Returns:
         相場とのずれ（log(㎡単価) − 相場）。どの条件でも件数が足りない行は NaN。
     """
-    log_unit = np.log(train[TARGET] / train["面積_数値"])
+    log_unit = np.log(tr[TARGET] / tr["面積_数値"])
     keys = pd.DataFrame(
         {
-            "地区名": train["地区名"].astype(str),
-            "市区町村名": train["市区町村名"].astype(str),
-            "取引年": train["取引年"],
-            "面積帯": _band(train["面積_数値"], AREA_BINS),
-            "築年帯": _band(train["建築年_数値"], BUILT_YEAR_BINS),
-            "駅距離帯": _band(train["駅距離_分"], DISTANCE_BINS),
+            "地区名": tr["地区名"].astype(str),
+            "市区町村名": tr["市区町村名"].astype(str),
+            "取引年": tr["取引年"],
+            "面積帯": _band(tr["面積_数値"], AREA_BINS),
+            "築年帯": _band(tr["建築年_数値"], BUILT_YEAR_BINS),
+            "駅距離帯": _band(tr["駅距離_分"], DISTANCE_BINS),
         },
-        index=train.index,
+        index=tr.index,
     )
-    deviation = pd.Series(np.nan, index=train.index)
+    deviation = pd.Series(np.nan, index=tr.index)
     for level in REFERENCE_LEVELS:
         group = log_unit.groupby([keys[k] for k in level])
         enough = deviation.isna() & (group.transform("size") >= MIN_COUNT)
@@ -66,20 +68,20 @@ def market_deviation(train: pd.DataFrame) -> pd.Series:
     return deviation
 
 
-def select(train: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series | None]:
+def select(tr: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series | None]:
     """相場から極端にずれた行を、学習から外すか重みを下げる。
 
     相場は価格から計算するので、渡された学習データだけで計算する。
 
     Args:
-        train: 学習データ。CV では、その fold の学習データ。
+        tr: 学習データ。CV では、その fold の学習データ。
 
     Returns:
         学習に使う行と、行ごとの重み。重みが None なら全行同じ重み。
     """
-    outlier = market_deviation(train).abs() > OUTLIER_THRESHOLD
-    outlier &= ~train["取引の事情等"].isin(KEEP_CIRCUMSTANCES)
+    outlier = _market_deviation(tr).abs() > OUTLIER_THRESHOLD
+    outlier &= ~tr["取引の事情等"].isin(KEEP_CIRCUMSTANCES)
     if OUTLIER_MODE == "drop":
-        return train[~outlier], None
-    weight = pd.Series(np.where(outlier, OUTLIER_WEIGHT, 1.0), index=train.index)
-    return train, weight
+        return tr[~outlier], None
+    weight = pd.Series(np.where(outlier, OUTLIER_WEIGHT, 1.0), index=tr.index)
+    return tr, weight

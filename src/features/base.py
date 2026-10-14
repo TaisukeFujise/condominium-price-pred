@@ -1,4 +1,4 @@
-"""ベースラインの特徴量（src/data/preprocess.py で作った列をそのまま使う）。
+"""ベースラインの特徴量（src/preprocess.py で作った列をそのまま使う）。
 
 元データのうち、次の列はモデルに入れない:
   - id                       : 価格とは関係ない
@@ -9,7 +9,7 @@
   - is_train                 : train と test を見分ける目印の列
 """
 
-from src.data.preprocess import CATEGORICAL_COLS
+from src.preprocess import CATEGORICAL_COLS
 
 NUMERIC_COLS = [
     "経過四半期",

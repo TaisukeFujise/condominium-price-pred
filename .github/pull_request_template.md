@@ -6,14 +6,14 @@
 
 <!-- 当てはまるものに x を入れる。工程の説明は docs/workflow.md -->
 
-- [ ] 1. 前処理（`src/data/preprocess.py`）
+- [ ] 1. 前処理（`src/preprocess.py`）
 - [ ] 2. 特徴量（`src/features/`）
-- [ ] 3. 学習データの選択（`src/data/selection.py`）
-- [ ] 4. 目的変数（`src/model/target.py`）
-- [ ] 5. モデル（`src/model/lgbm.py` など）
-- [ ] 6. パラメータ（`src/model/params.py`）
-- [ ] 7. アンサンブル（`src/model/ensemble.py`）
-- [ ] 8. 後処理（`src/model/postprocess.py`）
+- [ ] 3. 学習データの選択（`src/selection.py`）
+- [ ] 4. 目的変数（`src/target.py`）
+- [ ] 5. モデル（`src/models/`）
+- [ ] 6. パラメータ（`src/models/params.py`）
+- [ ] 7. アンサンブル（`src/ensemble.py`）
+- [ ] 8. 後処理（`src/postprocess.py`）
 - [ ] 実験以外（ドキュメント・環境・リファクタリングなど）
 
 ## 結果

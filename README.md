@@ -23,7 +23,7 @@ uv sync
 
 `uv sync` で Python 3.12 の取得・`.venv/` の作成・`uv.lock` どおりのパッケージ導入まで自動で行われる。
 
-動作確認（ベースラインの学習から提出ファイルの作成まで、数十秒かかる）:
+動作確認（CV の 3 fold と本番の学習から提出ファイルの作成まで、数分かかる）:
 
 ```bash
 uv run python main.py
@@ -55,7 +55,7 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 
 ### 実験
 
-試したい工程のファイル（`src/data/`・`src/features/`・`src/model/` の中）を直して、`uv run python main.py` を実行する。CV が良くなったら PR を出す。
+試したい工程のファイル（`src/` の中。どのファイルがどの工程かは [`docs/experiment-guide.md`](docs/experiment-guide.md) の「構成」）を直して、`uv run python main.py` を実行する。CV が良くなったら PR を出す。
 
 実験の進め方とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
 
