@@ -12,25 +12,27 @@ from src.config import TARGET
 def to_target(rows: pd.DataFrame) -> pd.Series:
     """学習に使う目的変数を作る。
 
-    評価指標は RMSLE なので、log1p(価格) を学習すれば、log の世界での誤差を小さくすることが RMSLE を小さくすることになる。
+    総額を面積で割ることで、物件規模を除いた㎡単価を学習する。
 
     Args:
         rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
 
     Returns:
-        目的変数（log1p した価格）。
+        目的変数（log した㎡単価）。
     """
-    return np.log1p(rows[TARGET])
+    unit_price = rows[TARGET] / rows["面積_数値"]
+    return np.log(unit_price)
 
 
 def to_price(pred: np.ndarray, pred_rows: pd.DataFrame) -> np.ndarray:
-    """モデルの予測を円の価格に戻す。to_target の逆変換。
+    """モデルの予測した㎡単価に面積を掛けて総額に戻す。
 
     Args:
         pred: モデルの予測。
-        pred_rows: 予測した行。㎡単価を予測する場合などに、面積を掛け戻すのに使う。
+        pred_rows: 面積_数値列を含む予測対象の行。
 
     Returns:
         円の価格。
     """
-    return np.expm1(pred)
+    unit_price = np.exp(pred)
+    return unit_price * pred_rows["面積_数値"].to_numpy()
