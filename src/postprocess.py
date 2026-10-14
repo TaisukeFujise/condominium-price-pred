@@ -48,14 +48,11 @@ def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression
     return calibrator
 
 
-def adjust(
-    price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame, features: list[str]
-) -> np.ndarray:
+def _calibrate(price: np.ndarray, tr: pd.DataFrame, features: list[str]) -> np.ndarray:
     """予測した価格を、isotonic 較正で補正する。
 
     Args:
         price: 予測した価格（円）。
-        pred_rows: 予測した行。
         tr: そのときの学習データ。補正に使ってよいのはこれだけ。
         features: モデルに入れる列名の一覧。
 
@@ -66,3 +63,23 @@ def adjust(
     pred_log = np.log1p(price)
     calibrated_log = calibrator.predict(pred_log)
     return np.expm1(calibrated_log)
+
+
+def adjust(
+    price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame, features: list[str]
+) -> np.ndarray:
+    """予測した価格を補正する。今は何もしない。
+
+    isotonic 較正（`_calibrate`）は CV では良くなったが、Public LB では悪くなったので使っていない
+    （#22 のコメント）。使うときは `return _calibrate(price, tr, features)` に戻す。
+
+    Args:
+        price: 予測した価格（円）。
+        pred_rows: 予測した行。
+        tr: そのときの学習データ。補正に使ってよいのはこれだけ。
+        features: モデルに入れる列名の一覧。
+
+    Returns:
+        補正した価格（円）。
+    """
+    return price
