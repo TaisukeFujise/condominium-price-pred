@@ -3,7 +3,7 @@
 to_target と to_price は対になっている。to_price(モデルの予測) で円の価格に戻せるようにする。
 
 決定木は学習期間の最後の水準より先へ予測を伸ばせないので、相場の上昇分を目的変数から切り離す。
-学習データから四半期ごとの相場の指数を作り（fit_trend）、目的変数は log1p(価格) から指数を引いたもの、
+学習データから四半期ごとの相場の指数を作り（fit_trend）、目的変数は log(㎡単価) から指数を引いたもの、
 予測は指数を学習期間より先へ直線で延ばした値を足して戻す。
 指数は価格から作るので、CV では fold ごとにその fold の学習データだけで fit_trend を呼ぶ。
 """
@@ -164,30 +164,31 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
 def to_target(rows: pd.DataFrame, trend: Trend | None = None) -> pd.Series:
     """学習に使う目的変数を作る。
 
-    評価指標は RMSLE なので、log1p(価格) を学習する。
-    trend が渡された場合、相場の指数を引き、決定木にはその時期の相場に比べた価格を予測させる。
+    総額を面積で割ることで、物件規模を除いた㎡単価を学習する。
+    trend が渡された場合、相場の指数を引き、決定木にはその時期の相場に比べた㎡単価を予測させる。
 
     Args:
         rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
         trend: fit_trend で学習データから作った指数。
 
     Returns:
-        目的変数（log1p した価格、または指数を引いた値）。
+        目的変数（log した㎡単価、または指数を引いた値）。
     """
-    log_p = np.log1p(rows[TARGET])
+    unit_price = rows[TARGET] / rows["面積_数値"]
+    log_unit = np.log(unit_price)
     if trend is not None:
-        return log_p - trend.log_index(rows)
-    return log_p
+        return log_unit - trend.log_index(rows)
+    return log_unit
 
 
 def to_price(
     pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend | None = None
 ) -> np.ndarray:
-    """モデルの予測を円の価格に戻す。to_target の逆変換。
+    """モデルの予測した㎡単価に面積を掛けて総額に戻す。to_target の逆変換。
 
     Args:
         pred: モデルの予測。
-        pred_rows: 予測した行。
+        pred_rows: 面積_数値列を含む予測対象の行。
         trend: to_target と同じ指数。
 
     Returns:
@@ -196,4 +197,5 @@ def to_price(
     pred_log = pred
     if trend is not None:
         pred_log = pred + trend.log_index(pred_rows)
-    return np.expm1(pred_log)
+    unit_price = np.exp(pred_log)
+    return unit_price * pred_rows["面積_数値"].to_numpy()
