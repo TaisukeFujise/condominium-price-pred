@@ -197,7 +197,7 @@ fill_body(
 
 # 試した手法やモデルとその結果
 desc = placeholder(s3, 1)
-desc.top, desc.height = Inches(0.88), Inches(0.95)
+desc.top, desc.height = Inches(0.88), Inches(1.6)
 fill_body(
     desc,
     [
@@ -214,6 +214,11 @@ fill_body(
         (
             0,
             "今の最高は LB 0.19709。上位チームは 0.19408 で、まだ 0.003 差がある",
+            False,
+        ),
+        (
+            0,
+            "CV と LB のずれ（isotonic 較正）：較正表は学習期間の直近 3 四半期で作るため、値段が上がり続ける test では範囲外の予測が頭打ちになり、低く出たと考える。目的変数の設計を見直した後は CV でも悪化したので、時期によるずれを較正がまとめて直していた分が test に合わなかった可能性もある",
             False,
         ),
     ],
@@ -264,7 +269,7 @@ fill_table(
             "不採用",
         ],
     ],
-    y=1.85,
+    y=2.5,
     sz=8.5,
     head_sz=9.5,
     row_h=0.36,
