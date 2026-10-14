@@ -19,7 +19,7 @@ ISJ_URL = "https://nlftp.mlit.go.jp/isj/dls/data/17.0b/13000-17.0b.zip"
 ISJ_ZIP = EXTERNAL_DIR / "13000-17.0b.zip"
 
 
-def load_town_points() -> pd.DataFrame:
+def _load_town_points() -> pd.DataFrame:
     """町名ごとの緯度・経度を読み込む。zip がなければダウンロードする。
 
     Returns:
@@ -60,7 +60,7 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
         df[["市区町村名", "地区名"]]
         .astype(str)
         .merge(
-            load_town_points(),
+            _load_town_points(),
             left_on=["市区町村名", "地区名"],
             right_on=["市区町村名", "町名"],
             how="left",
