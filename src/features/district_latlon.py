@@ -1,10 +1,12 @@
 """地区の緯度・経度（外部データ: 大字・町丁目レベル位置参照情報）。
 
-出典: 「大字・町丁目レベル位置参照情報 国土交通省」（2023 年版（17.0b）、東京都、
-ファイル名 13000-17.0b.zip、https://nlftp.mlit.go.jp/isj/ ）を加工して作成。
+出典: 「大字・町丁目レベル位置参照情報 国土交通省」（2024 年版（18.0b）、東京都、
+ファイル名 13000-18.0b.zip、https://nlftp.mlit.go.jp/isj/ ）を加工して作成。
 丁目を外して町名ごとに緯度・経度を平均した。利用約款: https://nlftp.mlit.go.jp/isj/agreement.html
 
-2023 年版は基準日が test 期間（2025年第3四半期以降）より前なので、AGENTS.md の規約を満たす。
+2024 年版の基準日（メタデータの時間範囲）は 2024-07-26 で、test 期間（2025年第3四半期以降）より前なので、
+AGENTS.md の規約を満たす。2023 年版（17.0b）ではなく 2024 年版を使うのは、2024 年 8 月に新しくできた
+昭島市の代官山（昭島駅の北側）が 2023 年版にはなく、その地区の取引に緯度・経度が付かなかったため。
 """
 
 import io
@@ -15,8 +17,8 @@ import pandas as pd
 
 from src.config import EXTERNAL_DIR
 
-ISJ_URL = "https://nlftp.mlit.go.jp/isj/dls/data/17.0b/13000-17.0b.zip"
-ISJ_ZIP = EXTERNAL_DIR / "13000-17.0b.zip"
+ISJ_URL = "https://nlftp.mlit.go.jp/isj/dls/data/18.0b/13000-18.0b.zip"
+ISJ_ZIP = EXTERNAL_DIR / "13000-18.0b.zip"
 
 
 def _load_town_points() -> pd.DataFrame:
@@ -54,7 +56,7 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
         df: 前処理済みの表。
 
     Returns:
-        緯度・経度の 2 列の表。結合できない地区（昭島市・代官山だけ）は NaN。
+        緯度・経度の 2 列の表。結合できない地区は NaN（今のデータにはない）。
     """
     merged = (
         df[["市区町村名", "地区名"]]
