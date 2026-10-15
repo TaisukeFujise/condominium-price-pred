@@ -20,3 +20,15 @@ LGBM_PARAMS = {
     "seed": SEED,
     "verbose": -1,
 }
+
+XGBOOST_PARAMS = {
+    # LGBM_PARAMS の huber と同じく、log 空間で 0.2 より大きいずれを線形にしか効かせない。
+    # XGBoost に huber はないので、滑らかに近づけた pseudo-Huber を使う
+    "objective": "reg:pseudohubererror",
+    "huber_slope": 0.2,
+    "eval_metric": "rmse",
+    # LightGBM と同じく、ヒストグラムで分岐を探す（category 型の列を使うのにも必要）
+    "tree_method": "hist",
+    "learning_rate": 0.05,
+    "seed": SEED,
+}
