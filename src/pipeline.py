@@ -32,10 +32,14 @@ def fit_and_predict_valid(
     Returns:
         va の予測価格（円）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
     """
-    tr_used, weight, y, trend = _training_data(tr)
+    tr_used, weight, trend = _training_data(tr)
     models = [
         model.fit_with_validation(
-            tr_used[features], y, va[features], target.to_target(va, trend), weight
+            tr_used[features],
+            target.to_target(tr_used, trend, model.per_area),
+            va[features],
+            target.to_target(va, trend, model.per_area),
+            weight,
         )
         for model in _new_models(model_classes)
     ]
@@ -63,9 +67,14 @@ def fit_and_predict_test(
     Returns:
         test の予測価格（円）と、学習済みのモデル。
     """
-    tr_used, weight, y, trend = _training_data(train)
+    tr_used, weight, trend = _training_data(train)
     models = [
-        model.fit(tr_used[features], y, weight, cv)
+        model.fit(
+            tr_used[features],
+            target.to_target(tr_used, trend, model.per_area),
+            weight,
+            cv,
+        )
         for model, cv in zip(_new_models(model_classes), cv_models, strict=True)
     ]
     price = _predict_price(models, test, tr_used, features, trend)
@@ -86,18 +95,20 @@ def _new_models(model_classes: list[Callable[[], Model]]) -> list[Model]:
 
 def _training_data(
     tr: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.Series | None, pd.Series, target.Trend]:
-    """学習に使う行・重み・目的変数・相場の指数を決める（工程 3・4）。
+) -> tuple[pd.DataFrame, pd.Series | None, target.Trend]:
+    """学習に使う行・重み・相場の指数を決める（工程 3・4）。
+
+    目的変数はモデルごとに違ってよい（Model.per_area）ので、ここでは作らず、モデルごとに to_target で作る。
 
     Args:
         tr: 学習データ。
 
     Returns:
-        学習に使う行、行ごとの重み、目的変数、相場の指数。
+        学習に使う行、行ごとの重み、相場の指数。
     """
     tr_used, weight = selection.select(tr)
     trend = target.fit_trend(tr_used)
-    return tr_used, weight, target.to_target(tr_used, trend), trend
+    return tr_used, weight, trend
 
 
 def _predict_price(
@@ -120,7 +131,9 @@ def _predict_price(
         pred_rows の予測価格（円）。
     """
     preds = [
-        target.to_price(model.predict(pred_rows[features]), pred_rows, trend)
+        target.to_price(
+            model.predict(pred_rows[features]), pred_rows, trend, model.per_area
+        )
         for model in models
     ]
     price = ensemble.blend(preds)

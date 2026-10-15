@@ -9,6 +9,7 @@ CV が良くなったら PR を出す（docs/experiment-guide.md）。
 """
 
 from collections.abc import Callable
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,8 @@ from src.models.lgbm import LGBM
 
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
-MODELS: list[Callable[[], Model]] = [LGBM]
+# 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
+MODELS: list[Callable[[], Model]] = [LGBM, partial(LGBM, per_area=False)]
 
 
 def main() -> None:

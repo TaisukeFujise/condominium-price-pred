@@ -13,15 +13,17 @@ from src.models.params import LGBM_PARAMS
 class LGBM(Model):
     """LightGBM のモデル。1 つのインスタンスは 1 回だけ学習する。"""
 
-    def __init__(self, params: dict = LGBM_PARAMS) -> None:
+    def __init__(self, params: dict = LGBM_PARAMS, per_area: bool = True) -> None:
         """学習前のモデルを作る。
 
         Args:
             params: LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
+            per_area: 目的変数を㎡単価にするか（False なら総額）。
         """
         # 初期値の LGBM_PARAMS は全インスタンスで共有されるので、seed だけ変えるときなどに
         # 書き換えが他のモデルへ広がらないようコピーする
         self.params = dict(params)
+        self.per_area = per_area
         self.booster: lgb.Booster | None = None
         self.features: list[str] = []
 
