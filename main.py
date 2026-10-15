@@ -24,7 +24,7 @@ from src.models.params import LGBM_BAGGING_PARAMS
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
 # seed だけ変えた LightGBM を N_SEEDS 個並べ、予測を平均する（seed 平均）
-N_SEEDS = 3
+N_SEEDS = 5
 MODELS: list[Callable[[], Model]] = [
     partial(LGBM, {**LGBM_BAGGING_PARAMS, "seed": SEED + i}) for i in range(N_SEEDS)
 ]
