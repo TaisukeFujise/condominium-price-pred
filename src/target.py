@@ -6,6 +6,8 @@ to_target と to_price は対になっている。to_price(モデルの予測) �
 学習データから四半期ごとの相場の指数を作り（fit_trend）、目的変数は log(㎡単価) から指数を引いたもの、
 予測は指数を学習期間より先へ直線で延ばした値を足して戻す。
 指数は価格から作るので、CV では fold ごとにその fold の学習データだけで fit_trend を呼ぶ。
+指数は市区町村の価格帯ごとに作り、さらにワンルーム（ONE_ROOM_AREA ㎡ 以下）とそれ以外に分ける。
+ワンルームはどの価格帯でも値上がりが遅く（#37）、共通の速さで延ばすと高く予測しすぎるため。
 """
 
 from dataclasses import dataclass
@@ -21,6 +23,9 @@ GROWTH_QUARTERS = 4
 GROUPING = "city_tier"
 # 全部の取引で作った指数のキー。価格帯のない市区町村（2021 年より前に取引がない）にも、この指数を使う
 OVERALL = "全体"
+# これ以下の面積をワンルームとして、指数を分ける
+ONE_ROOM_AREA = 25
+ONE_ROOM = "ワンルーム"
 
 QUARTER = "経過四半期"
 N_TIERS = 5
@@ -37,7 +42,7 @@ class Trend:
         index_by_group: (グループ, 経過四半期) ごとの指数（log）。学習期間の最後の四半期を 0 とする。
         slope: グループごとの 1 四半期あたりの上がる速さ（log）。
         last_quarter: 学習期間の最後の経過四半期。
-        city_group: 市区町村名 → グループ。ここにない市区町村は OVERALL の指数を使う。
+        city_group: 市区町村名 → 価格帯。ここにない市区町村は OVERALL の指数を使う。
     """
 
     index_by_group: dict[str, pd.Series]
@@ -54,7 +59,7 @@ class Trend:
         Returns:
             行ごとの指数（log）。
         """
-        group = rows["市区町村名"].astype(object).map(self.city_group).fillna(OVERALL)
+        group = _group(rows, self.city_group).fillna(OVERALL)
         out = np.zeros(len(rows))
         for g in group.unique():
             mask = (group == g).to_numpy()
@@ -143,6 +148,21 @@ def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
     return tier.groupby(city).first().astype(str).to_dict()
 
 
+def _group(rows: pd.DataFrame, city_group: dict[str, str]) -> pd.Series:
+    """行ごとに、使う指数のグループ（価格帯、ワンルームならその後ろに印）を決める。
+
+    Args:
+        rows: 市区町村名と面積_数値の列を含む行。
+        city_group: 市区町村名 → 価格帯。
+
+    Returns:
+        行ごとのグループ。価格帯のない市区町村は欠損。
+    """
+    tier = rows["市区町村名"].astype(object).map(city_group)
+    one_room = rows["面積_数値"] <= ONE_ROOM_AREA
+    return tier.where(~one_room, tier + "_" + ONE_ROOM)
+
+
 def fit_trend(tr: pd.DataFrame) -> Trend:
     """学習データから相場の指数と延ばす速さを決める。
 
@@ -155,9 +175,9 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
     city_group = _city_tiers(tr) if GROUPING == "city_tier" else {}
     if GROUPING not in ("all", "city_tier"):
         raise ValueError(GROUPING)
-    group = tr["市区町村名"].astype(object).map(city_group)
+    group = _group(tr, city_group)
     index_by_group = {OVERALL: _market_index(tr)}
-    for g in set(city_group.values()):
+    for g in group.dropna().unique():
         index_by_group[g] = _market_index(tr[group == g])
     slope = {g: _growth_slope(qi) for g, qi in index_by_group.items()}
     return Trend(index_by_group, slope, int(tr[QUARTER].max()), city_group)
