@@ -26,6 +26,8 @@ QUARTER = "経過四半期"
 N_TIERS = 5
 # 市区町村の価格帯を分ける基準年（この年より前の取引の㎡単価で分ける）
 TIER_BASE_YEAR = 2021
+# 価格帯 1 をさらにいくつに分けるか。価格帯 1 は市区町村が多く、上がる速さのばらつきがほかの価格帯の数倍ある（#36）
+N_TIER1_SPLITS = 2
 N_ITER = 30
 
 
@@ -126,21 +128,27 @@ def _growth_slope(quarter_index: pd.Series) -> float:
 
 
 def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
-    """市区町村を、2021 年より前の㎡単価の中央値で 5 つの価格帯に分ける。
+    """市区町村を、2021 年より前の㎡単価の中央値で 5 つの価格帯に分け、価格帯 1 だけをさらに分ける。
 
     上がる速さそのものではなく水準で分けるのは、たまたまのぶれに合わせたグループにしないため。
+    価格帯 1 は件数で重みを付けず、市区町村の数が同じになるように分ける。
+    件数で重みを付けると、件数の多い足立区・板橋区などに引っ張られ、安い側に市区町村が偏るため。
 
     Args:
         tr: 学習データ。
 
     Returns:
-        市区町村名 → 価格帯（"1"〜"5"、5 が一番高い）。
+        市区町村名 → 価格帯（"1-1"・"1-2"・"2"〜"5"、5 が一番高い）。
     """
     early = tr[tr["取引年"] < TIER_BASE_YEAR]
     city = early["市区町村名"].astype(object)
     city_median = np.log(early[TARGET] / early["面積_数値"]).groupby(city).median()
     tier = pd.qcut(city.map(city_median), N_TIERS, labels=False) + 1
-    return tier.groupby(city).first().astype(str).to_dict()
+    city_tier = tier.groupby(city).first().astype(str)
+    tier1_median = city_median[city_tier.index[city_tier == "1"]]
+    tier1_split = pd.qcut(tier1_median, N_TIER1_SPLITS, labels=False) + 1
+    city_tier[tier1_split.index] = "1-" + tier1_split.astype(str)
+    return city_tier.to_dict()
 
 
 def fit_trend(tr: pd.DataFrame) -> Trend:
