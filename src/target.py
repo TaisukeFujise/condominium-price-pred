@@ -21,6 +21,10 @@ GROWTH_QUARTERS = 4
 GROUPING = "city_tier"
 # 全部の取引で作った指数のキー。価格帯のない市区町村（2021 年より前に取引がない）にも、この指数を使う
 OVERALL = "全体"
+# 指数を築年数でも分けるときの境目（年）。None なら分けない。
+# 築浅ほど速く上がる（築 10 年以内 +9.4%/年、30 年超 +4.1%/年、Issue #7）のに、
+# 同じ速さで延ばすと築浅を安く、築古を高く予測しすぎる
+AGE_EDGES: list[int] | None = [15, 30]
 
 QUARTER = "経過四半期"
 N_TIERS = 5
@@ -38,12 +42,14 @@ class Trend:
         slope: グループごとの 1 四半期あたりの上がる速さ（log）。
         last_quarter: 学習期間の最後の経過四半期。
         city_group: 市区町村名 → グループ。ここにない市区町村は OVERALL の指数を使う。
+        age_edges: 築年数で分ける境目。None なら分けない。
     """
 
     index_by_group: dict[str, pd.Series]
     slope: dict[str, float]
     last_quarter: int
     city_group: dict[str, str]
+    age_edges: list[int] | None
 
     def log_index(self, rows: pd.DataFrame) -> np.ndarray:
         """行ごとに、その四半期の指数（log）を返す。学習期間より先は延ばした値。
@@ -54,7 +60,7 @@ class Trend:
         Returns:
             行ごとの指数（log）。
         """
-        group = rows["市区町村名"].astype(object).map(self.city_group).fillna(OVERALL)
+        group = _group_keys(rows, self.city_group, self.age_edges, self.index_by_group)
         out = np.zeros(len(rows))
         for g in group.unique():
             mask = (group == g).to_numpy()
@@ -143,6 +149,37 @@ def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
     return tier.groupby(city).first().astype(str).to_dict()
 
 
+def _group_keys(
+    rows: pd.DataFrame,
+    city_group: dict[str, str],
+    age_edges: list[int] | None,
+    known: dict[str, pd.Series],
+) -> pd.Series:
+    """行ごとに、どの指数を使うか（グループのキー）を決める。
+
+    築年数で分けるときは「価格帯・築年数帯」のキーにする。築年数が分からない行と、
+    指数を作れなかった組み合わせ（known にないキー）は、価格帯だけのキーにする。
+
+    Args:
+        rows: 市区町村名と築年数の列を含む行。
+        city_group: 市区町村名 → 価格帯。
+        age_edges: 築年数で分ける境目。None なら分けない。
+        known: 指数を作れたグループ。fit_trend の途中では、まだ空でよい。
+
+    Returns:
+        行ごとのグループのキー。
+    """
+    base = rows["市区町村名"].astype(object).map(city_group).fillna(OVERALL)
+    if age_edges is None:
+        return base
+    band = pd.Series(np.digitize(rows["築年数"], age_edges), index=rows.index)
+    with_age = base + "・築" + band.astype(str)
+    use_age = rows["築年数"].notna()
+    if known:
+        use_age &= with_age.isin(known.keys())
+    return with_age.where(use_age, base)
+
+
 def fit_trend(tr: pd.DataFrame) -> Trend:
     """学習データから相場の指数と延ばす速さを決める。
 
@@ -159,8 +196,16 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
     index_by_group = {OVERALL: _market_index(tr)}
     for g in set(city_group.values()):
         index_by_group[g] = _market_index(tr[group == g])
+    if AGE_EDGES is not None:
+        age_group = _group_keys(tr, city_group, AGE_EDGES, {})
+        n_quarters = tr[QUARTER].nunique()
+        for g in age_group[age_group.str.contains("・築")].unique():
+            quarter_index = _market_index(tr[age_group == g])
+            # 件数が少なく、取引のない四半期がある組み合わせは、価格帯だけの指数を使う
+            if len(quarter_index) == n_quarters:
+                index_by_group[g] = quarter_index
     slope = {g: _growth_slope(qi) for g, qi in index_by_group.items()}
-    return Trend(index_by_group, slope, int(tr[QUARTER].max()), city_group)
+    return Trend(index_by_group, slope, int(tr[QUARTER].max()), city_group, AGE_EDGES)
 
 
 def to_target(rows: pd.DataFrame, trend: Trend) -> pd.Series:
