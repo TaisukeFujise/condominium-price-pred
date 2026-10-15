@@ -20,3 +20,12 @@ LGBM_PARAMS = {
     "seed": SEED,
     "verbose": -1,
 }
+
+# seed 平均（main.py の MODELS）で seed ごとに違う木ができるよう、木ごとに行と列をランダムに 8 割ずつ使う。
+# LGBM_PARAMS には乱数を使う設定がないので、seed だけ変えても全く同じ予測になる
+LGBM_BAGGING_PARAMS = {
+    **LGBM_PARAMS,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+}
