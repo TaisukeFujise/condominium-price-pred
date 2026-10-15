@@ -15,13 +15,17 @@ import pandas as pd
 
 from src.config import TARGET
 
-# 延ばす速さを決める期間。"last_year"（直近 4 四半期の直線）
-GROWTH = "last_year"
-# 指数の分け方。"ward_tier"（市区町村の価格帯 5 つ）
-GROUPING = "ward_tier"
+# 直近何四半期の直線で延ばす速さを決めるか
+GROWTH_QUARTERS = 4
+# 指数の分け方。"city_tier"（市区町村の価格帯 5 つ）
+GROUPING = "city_tier"
+# 全部の取引で作った指数のキー。価格帯のない市区町村（2021 年より前に取引がない）にも、この指数を使う
+OVERALL = "全体"
 
 QUARTER = "経過四半期"
 N_TIERS = 5
+# 市区町村の価格帯を分ける基準年（この年より前の取引の㎡単価で分ける）
+TIER_BASE_YEAR = 2021
 N_ITER = 30
 
 
@@ -30,16 +34,16 @@ class Trend:
     """学習データから作った相場の指数（log）と、学習期間より先へ延ばす速さ。
 
     Attributes:
-        level: (グループ, 経過四半期) ごとの指数（log）。学習期間の最後の四半期を 0 とする。
+        index_by_group: (グループ, 経過四半期) ごとの指数（log）。学習期間の最後の四半期を 0 とする。
         slope: グループごとの 1 四半期あたりの上がる速さ（log）。
         last_quarter: 学習期間の最後の経過四半期。
-        ward_group: 市区町村名 → グループ。ここにない市区町村は "全体" の指数を使う。
+        city_group: 市区町村名 → グループ。ここにない市区町村は OVERALL の指数を使う。
     """
 
-    level: dict[str, pd.Series]
+    index_by_group: dict[str, pd.Series]
     slope: dict[str, float]
     last_quarter: int
-    ward_group: dict[str, str]
+    city_group: dict[str, str]
 
     def log_index(self, rows: pd.DataFrame) -> np.ndarray:
         """行ごとに、その四半期の指数（log）を返す。学習期間より先は延ばした値。
@@ -50,20 +54,17 @@ class Trend:
         Returns:
             行ごとの指数（log）。
         """
-        group = rows["市区町村名"].astype(object).map(self.ward_group).fillna("全体")
+        group = rows["市区町村名"].astype(object).map(self.city_group).fillna(OVERALL)
         out = np.zeros(len(rows))
         for g in group.unique():
             mask = (group == g).to_numpy()
             quarter = rows[QUARTER].to_numpy()[mask]
-            level = self.level[g]
-            ahead = np.maximum(quarter - self.last_quarter, 0)
-            within = (
-                level.reindex(np.minimum(quarter, self.last_quarter))
-                .ffill()
-                .bfill()
-                .to_numpy()
-            )
-            out[mask] = within + self.slope[g] * ahead
+            quarter_index = self.index_by_group[g]
+            quarters_ahead = np.maximum(quarter - self.last_quarter, 0)
+            base_index = quarter_index.reindex(
+                np.minimum(quarter, self.last_quarter)
+            ).to_numpy()
+            out[mask] = base_index + self.slope[g] * quarters_ahead
         return out
 
 
@@ -71,6 +72,8 @@ def _market_index(tr: pd.DataFrame) -> pd.Series:
     """log(㎡単価) = 組の効果 + 四半期の効果 として、四半期の効果を指数（log）にする。
 
     組は 価格情報区分 × 地区名 × 面積帯 × 築年数帯。
+    築年数をそろえるのは、売れる物件が年々古くなっていて、そろえないと古くなった分の値下がりが相場の下落に見えるため。
+    面積帯・築年数帯の区切りは EDA 用のものを流用していて、細かさを変えても傾きはほとんど変わらない。
     組ごとに含まれる期間が違う（成約価格情報は 2021 年から）ので、2 つの効果を交互に推定する。
 
     Args:
@@ -86,7 +89,7 @@ def _market_index(tr: pd.DataFrame) -> pd.Series:
     )
     age_band = pd.cut(tr["築年数"], range(-5, 80, 5))
     # 欠損（築年数が分からないなど）は code -1 になり、それも 1 つの組として扱う
-    cell = (
+    segment = (
         pd.DataFrame(
             {
                 "kubun": tr["価格情報区分"].cat.codes,
@@ -101,29 +104,28 @@ def _market_index(tr: pd.DataFrame) -> pd.Series:
     quarter = tr[QUARTER]
     quarter_effect = pd.Series(0.0, index=tr.index)
     for _ in range(N_ITER):
-        cell_effect = (log_unit - quarter_effect).groupby(cell).transform("mean")
-        quarter_effect = (log_unit - cell_effect).groupby(quarter).transform("mean")
-    level = quarter_effect.groupby(quarter).first().sort_index()
-    return level - level.iloc[-1]
+        segment_effect = (log_unit - quarter_effect).groupby(segment).transform("mean")
+        quarter_effect = (log_unit - segment_effect).groupby(quarter).transform("mean")
+    quarter_index = quarter_effect.groupby(quarter).first().sort_index()
+    return quarter_index - quarter_index.iloc[-1]
 
 
-def _growth_slope(level: pd.Series) -> float:
+def _growth_slope(quarter_index: pd.Series) -> float:
     """指数（log）を直線で当てはめ、1 四半期あたりの上がる速さを返す。
 
     Args:
-        level: 経過四半期ごとの指数（log）。
+        quarter_index: 経過四半期ごとの指数（log）。
 
     Returns:
         1 四半期あたりの上がる速さ（log）。
     """
-    if GROWTH == "last_year":
-        recent = level[level.index > level.index.max() - 4]
-    else:
-        raise ValueError(GROWTH)
+    recent = quarter_index[
+        quarter_index.index > quarter_index.index.max() - GROWTH_QUARTERS
+    ]
     return float(np.polyfit(recent.index, recent.to_numpy(), 1)[0])
 
 
-def _ward_tiers(tr: pd.DataFrame) -> dict[str, str]:
+def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
     """市区町村を、2021 年より前の㎡単価の中央値で 5 つの価格帯に分ける。
 
     上がる速さそのものではなく水準で分けるのは、たまたまのぶれに合わせたグループにしないため。
@@ -134,11 +136,11 @@ def _ward_tiers(tr: pd.DataFrame) -> dict[str, str]:
     Returns:
         市区町村名 → 価格帯（"1"〜"5"、5 が一番高い）。
     """
-    early = tr[tr["取引年"] < 2021]
-    ward = early["市区町村名"].astype(object)
-    ward_level = np.log(early[TARGET] / early["面積_数値"]).groupby(ward).median()
-    tier = pd.qcut(ward.map(ward_level), N_TIERS, labels=False) + 1
-    return tier.groupby(ward).first().astype(str).to_dict()
+    early = tr[tr["取引年"] < TIER_BASE_YEAR]
+    city = early["市区町村名"].astype(object)
+    city_median = np.log(early[TARGET] / early["面積_数値"]).groupby(city).median()
+    tier = pd.qcut(city.map(city_median), N_TIERS, labels=False) + 1
+    return tier.groupby(city).first().astype(str).to_dict()
 
 
 def fit_trend(tr: pd.DataFrame) -> Trend:
@@ -150,15 +152,15 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
     Returns:
         to_target と to_price に渡す指数。
     """
-    ward_group = _ward_tiers(tr) if GROUPING == "ward_tier" else {}
-    if GROUPING not in ("all", "ward_tier"):
+    city_group = _city_tiers(tr) if GROUPING == "city_tier" else {}
+    if GROUPING not in ("all", "city_tier"):
         raise ValueError(GROUPING)
-    group = tr["市区町村名"].astype(object).map(ward_group).fillna("全体")
-    level = {"全体": _market_index(tr)}
-    for g in set(ward_group.values()):
-        level[g] = _market_index(tr[group == g])
-    slope = {g: _growth_slope(lv) for g, lv in level.items()}
-    return Trend(level, slope, int(tr[QUARTER].max()), ward_group)
+    group = tr["市区町村名"].astype(object).map(city_group)
+    index_by_group = {OVERALL: _market_index(tr)}
+    for g in set(city_group.values()):
+        index_by_group[g] = _market_index(tr[group == g])
+    slope = {g: _growth_slope(qi) for g, qi in index_by_group.items()}
+    return Trend(index_by_group, slope, int(tr[QUARTER].max()), city_group)
 
 
 def to_target(rows: pd.DataFrame, trend: Trend) -> pd.Series:
