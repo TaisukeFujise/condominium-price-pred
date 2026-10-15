@@ -3,6 +3,7 @@
 CV（fit_and_predict_valid）と本番（fit_and_predict_test）の違いは、繰り返しの回数（木の本数など）の決め方だけ。
 モデルはクラスのリスト（main.py の MODELS）で受け取り、それぞれの予測を ensemble.blend で混ぜる。
 それ以外の工程は _training_data と _predict_price にまとめ、両方が同じものを通るようにする。
+価格を使う特徴量（src/features/build.py の FOLD_MAKERS）は、_training_data の後で学習に使う行から作る。
 どちらも、渡された学習データ（CV では fold の学習データ）だけを使って動く。
 """
 
@@ -12,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from src import ensemble, postprocess, selection, target
+from src.features.build import build_fold_features
 from src.models.base import Model
 
 
@@ -33,6 +35,8 @@ def fit_and_predict_valid(
         va の予測価格（円）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
     """
     tr_used, weight, y, trend = _training_data(tr)
+    tr_used, va, fold_features = build_fold_features(tr_used, y, va)
+    features = features + fold_features
     models = [
         model.fit_with_validation(
             tr_used[features], y, va[features], target.to_target(va, trend), weight
@@ -64,6 +68,8 @@ def fit_and_predict_test(
         test の予測価格（円）と、学習済みのモデル。
     """
     tr_used, weight, y, trend = _training_data(train)
+    tr_used, test, fold_features = build_fold_features(tr_used, y, test)
+    features = features + fold_features
     models = [
         model.fit(tr_used[features], y, weight, cv)
         for model, cv in zip(_new_models(model_classes), cv_models, strict=True)
