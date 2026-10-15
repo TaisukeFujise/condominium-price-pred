@@ -26,9 +26,7 @@ MAJOR_STATIONS = ["東京", "新宿", "渋谷", "品川", "六本木", "虎ノ�
 # True なら一番近い主要駅までの距離 1 列、False なら主要駅ごとの距離
 NEAREST_ONLY = False
 
-# 東京都の範囲なら、緯度 1 度・経度 1 度を一定の km とみなしても誤差は小さい
-KM_PER_DEG_LAT = 111.0
-KM_PER_DEG_LON = 111.0 * np.cos(np.radians(35.68))
+EARTH_RADIUS_KM = 6371.0
 
 
 def make(df: pd.DataFrame) -> pd.DataFrame:
@@ -43,10 +41,29 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
     dist = pd.DataFrame(index=df.index)
     for name in MAJOR_STATIONS:
         lat, lon = STATION_POINTS[name]
-        dist[f"{name}駅までの距離_km"] = np.hypot(
-            (df["緯度"] - lat) * KM_PER_DEG_LAT, (df["経度"] - lon) * KM_PER_DEG_LON
-        )
+        dist[f"{name}駅までの距離_km"] = _haversine_km(df["緯度"], df["経度"], lat, lon)
     if NEAREST_ONLY:
         # skipna=False: 緯度・経度が欠損の行を 0 km にしない
         return dist.min(axis=1, skipna=False).to_frame("一番近い主要駅までの距離_km")
     return dist
+
+
+def _haversine_km(
+    lat: pd.Series, lon: pd.Series, station_lat: float, station_lon: float
+) -> pd.Series:
+    """地球を球とみなして、2 点間の大圏距離（km）を計算する（ハバーサインの公式）。
+
+    Args:
+        lat: 地区の緯度（度）。
+        lon: 地区の経度（度）。
+        station_lat: 主要駅の緯度（度）。
+        station_lon: 主要駅の経度（度）。
+
+    Returns:
+        距離（km）。緯度・経度が欠損の行は NaN。
+    """
+    phi1, phi2 = np.radians(lat), np.radians(station_lat)
+    d_phi = phi2 - phi1
+    d_lambda = np.radians(station_lon - lon)
+    a = np.sin(d_phi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(d_lambda / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * np.arcsin(np.sqrt(a))
