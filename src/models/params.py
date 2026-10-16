@@ -1,6 +1,7 @@
 """ハイパーパラメータ。モデルを足したら、<モデル名>_PARAMS をここに並べる。
 
 LightGBM は、特徴量の実験の前に理由のあるものだけ見直した（#12）。損失関数は Huber（#6）。
+木の形と正則化は Optuna で探した（#40）。
 """
 
 from src.config import SEED
@@ -17,6 +18,16 @@ LGBM_PARAMS = {
     "cat_smooth": 50,
     # デフォルトの 0.1 より小さくして木を増やす。学習時間はおよそ 2 倍になる
     "learning_rate": 0.05,
+    # 木の形と正則化は Optuna で探した（#40、scripts/tune_lgbm.py）。特徴量が大きく変わったら探し直す。
+    # 上位の試行はどれも「列を半分以下に絞り、葉を多く細かくする」組み合わせで、細かい値の違いは
+    # CV にほとんど効かない（上位 8 試行の差は 0.0004）
+    "num_leaves": 168,
+    "min_data_in_leaf": 5,
+    "feature_fraction": 0.44,
+    "bagging_fraction": 0.91,
+    "bagging_freq": 1,
+    "lambda_l1": 0.0076,
+    "lambda_l2": 0.30,
     "seed": SEED,
     "verbose": -1,
 }
