@@ -32,12 +32,18 @@ LGBM_PARAMS = {
     "verbose": -1,
 }
 
-# 目的変数・損失・評価指標は LGBM_PARAMS とそろえ、ほかは CatBoost のデフォルトのまま
+# 目的変数・損失・評価指標は LGBM_PARAMS とそろえる。学習率と木の形は CatBoost 単体の CV で選んだ
 CATBOOST_PARAMS = {
     # LGBM_PARAMS の huber（alpha=0.2）と同じ。0.2 より大きいずれは線形にしか効かせない
     "loss_function": "Huber:delta=0.2",
     "eval_metric": "RMSE",
-    "learning_rate": 0.05,
+    # 0.05 では木の上限（10000 本）を使い切ってもまだ良くなっていたので上げる
+    "learning_rate": 0.1,
+    # デフォルトの 6 より深くする。8 では CatBoost 単体の CV が 0.0018 良くなった
+    "depth": 8,
+    # デフォルトの Newton 法だと depth 8 で 2 本目の木から発散する。Huber は大きくずれた行の
+    # 2 階微分がほぼ 0 なので、そうした行ばかりの葉の値が極端に大きくなるため
+    "leaf_estimation_method": "Gradient",
     "random_seed": SEED,
     "verbose": False,
     # 学習の記録（catboost_info/）をリポジトリの中に書かせない
