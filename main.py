@@ -20,11 +20,17 @@ from src.features.build import build_features
 from src.models.base import Model
 from src.models.catboost import CatBoost
 from src.models.lgbm import LGBM
+from src.models.linear_residual import LinearResidual
 
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
 # 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
-MODELS: list[Callable[[], Model]] = [LGBM, partial(LGBM, per_area=False), CatBoost]
+MODELS: list[Callable[[], Model]] = [
+    LGBM,
+    partial(LGBM, per_area=False),
+    CatBoost,
+    LinearResidual,
+]
 
 
 def main() -> None:
