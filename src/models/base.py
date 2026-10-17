@@ -13,7 +13,13 @@ import pandas as pd
 
 
 class Model(ABC):
-    """モデルが揃えるメソッド。1 つのインスタンスは 1 回だけ学習する。"""
+    """モデルが揃えるメソッド。1 つのインスタンスは 1 回だけ学習する。
+
+    Attributes:
+        per_area: 目的変数を㎡単価にするか（False なら総額）。src/target.py の to_target に渡す。
+    """
+
+    per_area: bool = True
 
     @abstractmethod
     def fit_with_validation(

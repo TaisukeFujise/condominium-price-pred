@@ -163,33 +163,39 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
     return Trend(index_by_group, slope, int(tr[QUARTER].max()), city_group)
 
 
-def to_target(rows: pd.DataFrame, trend: Trend) -> pd.Series:
+def to_target(rows: pd.DataFrame, trend: Trend, per_area: bool = True) -> pd.Series:
     """学習に使う目的変数を作る。
 
     総額を面積で割ることで、物件規模を除いた㎡単価を学習する。
     さらに相場の指数を引き、決定木にはその時期の相場に比べた㎡単価を予測させる。
+    per_area=False では面積で割らず、総額から指数を引く（#33 より前の作り方）。
+    間違え方の違うモデルを混ぜるために残している。
 
     Args:
         rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
         trend: fit_trend で学習データから作った指数。
+        per_area: True なら㎡単価、False なら総額を目的変数にする。
 
     Returns:
-        目的変数（log した㎡単価から指数を引いた値）。
+        目的変数（log した㎡単価、または総額から指数を引いた値）。
     """
-    unit_price = rows[TARGET] / rows["面積_数値"]
-    return np.log(unit_price) - trend.log_index(rows)
+    price = rows[TARGET] / rows["面積_数値"] if per_area else rows[TARGET]
+    return np.log(price) - trend.log_index(rows)
 
 
-def to_price(pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend) -> np.ndarray:
+def to_price(
+    pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend, per_area: bool = True
+) -> np.ndarray:
     """モデルの予測に指数を足して㎡単価に戻し、面積を掛けて総額にする。to_target の逆変換。
 
     Args:
         pred: モデルの予測。
         pred_rows: 面積_数値列を含む予測対象の行。
         trend: to_target と同じ指数。
+        per_area: to_target と同じ値。False なら面積を掛けない。
 
     Returns:
         円の価格。
     """
-    unit_price = np.exp(pred + trend.log_index(pred_rows))
-    return unit_price * pred_rows["面積_数値"].to_numpy()
+    price = np.exp(pred + trend.log_index(pred_rows))
+    return price * pred_rows["面積_数値"].to_numpy() if per_area else price
