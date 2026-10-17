@@ -112,7 +112,7 @@ from src.models.params import LGBM_PARAMS
 MODELS = [LGBM, partial(LGBM, {**LGBM_PARAMS, "seed": 1})]
 ```
 
-今の `LGBM_PARAMS` には乱数を使う設定（`bagging_fraction`・`feature_fraction` など）がないので、seed だけ変えても同じモデルになる。seed 平均を試すときは、これらも 1 未満にする。
+今の `LGBM_PARAMS` は乱数を使う設定（`bagging_fraction`・`feature_fraction`）が 1 未満なので、seed を変えると別のモデルになる。
 
 - `best_iteration` は、early stopping で決まった繰り返しの回数（木の本数・エポック数など）。回数という考え方がないモデル（線形回帰など）では `None` を返す
 - 本番の `fit` には、CV で同じモデルを fold ごとに学習したもの（`cv_models`）が渡る。本番は検証データがないので、繰り返しの回数はここから決める（LightGBM は fold の `best_iteration` の平均）。回数がないモデルでは使わなくてよい
