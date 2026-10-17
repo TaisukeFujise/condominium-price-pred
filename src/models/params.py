@@ -31,3 +31,15 @@ LGBM_PARAMS = {
     "seed": SEED,
     "verbose": -1,
 }
+
+# 目的変数・損失・評価指標は LGBM_PARAMS とそろえ、ほかは CatBoost のデフォルトのまま
+CATBOOST_PARAMS = {
+    # LGBM_PARAMS の huber（alpha=0.2）と同じ。0.2 より大きいずれは線形にしか効かせない
+    "loss_function": "Huber:delta=0.2",
+    "eval_metric": "RMSE",
+    "learning_rate": 0.05,
+    "random_seed": SEED,
+    "verbose": False,
+    # 学習の記録（catboost_info/）をリポジトリの中に書かせない
+    "allow_writing_files": False,
+}
