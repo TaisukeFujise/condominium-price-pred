@@ -1,8 +1,10 @@
 """学習データの選択から後処理まで（工程 3〜8）をつなぎ、価格を予測する。
 
-CV（fit_and_predict_valid）と本番（fit_and_predict_test）の違いは、繰り返しの回数（木の本数など）の決め方だけ。
-モデルはクラスのリスト（main.py の MODELS）で受け取り、それぞれの予測を ensemble.blend で混ぜる。
-それ以外の工程は _training_data と _predict_price にまとめ、両方が同じものを通るようにする。
+CV（fit_and_predict_valid）と本番（fit_and_predict_test）の違いは、繰り返しの回数（木の本数など）の決め方と、
+混ぜる重みをいつ渡すか。モデルはクラスのリスト（main.py の MODELS）で受け取り、それぞれの予測を ensemble.blend で混ぜる。
+CV では重みを全 fold の予測がそろってから決めるので、fit_and_predict_valid はモデルごとの予測を返し、
+混ぜて後処理するのは main.py から blend_and_adjust を呼んで行う。本番は重みを先に受け取る。
+それ以外の工程は _training_data・_predict_each・blend_and_adjust にまとめ、両方が同じものを通るようにする。
 どちらも、渡された学習データ（CV では fold の学習データ）だけを使って動く。
 """
 
@@ -20,8 +22,10 @@ def fit_and_predict_valid(
     va: pd.DataFrame,
     features: list[str],
     model_classes: list[Callable[[], Model]],
-) -> tuple[np.ndarray, list[Model]]:
-    """CV 用。va のスコアで繰り返しの回数を決め（early stopping）、va を予測する。
+) -> tuple[list[np.ndarray], list[Model]]:
+    """CV 用。va のスコアで繰り返しの回数を決め（early stopping）、va をモデルごとに予測する。
+
+    混ぜる重みはほかの fold の予測から決めるので、ここでは混ぜない（blend_and_adjust で混ぜる）。
 
     Args:
         tr: fold の学習データ。
@@ -30,7 +34,7 @@ def fit_and_predict_valid(
         model_classes: 使うモデルのクラス（main.py の MODELS）。
 
     Returns:
-        va の予測価格（円）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
+        va のモデルごとの予測価格（円）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
     """
     tr_used, weight, trend = _training_data(tr)
     models = [
@@ -43,8 +47,7 @@ def fit_and_predict_valid(
         )
         for model in _new_models(model_classes)
     ]
-    price = _predict_price(models, va, tr_used, features, trend)
-    return price, models
+    return _predict_each(models, va, features, trend), models
 
 
 def fit_and_predict_test(
@@ -53,6 +56,7 @@ def fit_and_predict_test(
     features: list[str],
     model_classes: list[Callable[[], Model]],
     cv_models: list[list[Model]],
+    weights: np.ndarray,
 ) -> tuple[np.ndarray, list[Model]]:
     """本番用。train 全体で学習し、test を予測する。
 
@@ -63,6 +67,7 @@ def fit_and_predict_test(
         model_classes: 使うモデルのクラス（main.py の MODELS）。
         cv_models: [i] は model_classes[i] を CV の fold ごとに学習したもの。
             本番は検証データがないので、繰り返しの回数などはここから決める。
+        weights: モデルごとの混ぜる重み。CV の全 fold の予測から決めたもの。
 
     Returns:
         test の予測価格（円）と、学習済みのモデル。
@@ -77,8 +82,32 @@ def fit_and_predict_test(
         )
         for model, cv in zip(_new_models(model_classes), cv_models, strict=True)
     ]
-    price = _predict_price(models, test, tr_used, features, trend)
-    return price, models
+    preds = _predict_each(models, test, features, trend)
+    return blend_and_adjust(preds, weights, test, train, features), models
+
+
+def blend_and_adjust(
+    preds: list[np.ndarray],
+    weights: np.ndarray | None,
+    pred_rows: pd.DataFrame,
+    tr: pd.DataFrame,
+    features: list[str],
+) -> np.ndarray:
+    """モデルごとの予測を混ぜ、後処理をかける（工程 7・8）。
+
+    Args:
+        preds: pred_rows のモデルごとの予測価格（円）。
+        weights: モデルごとの混ぜる重み。None なら単純平均。
+        pred_rows: 予測した行。
+        tr: 学習データ（CV では fold の学習データ）。後処理に渡す。
+        features: モデルに入れる列名の一覧。
+
+    Returns:
+        pred_rows の予測価格（円）。
+    """
+    tr_used, _ = selection.select(tr)
+    price = ensemble.blend(preds, weights)
+    return postprocess.adjust(price, pred_rows, tr_used, features)
 
 
 def _new_models(model_classes: list[Callable[[], Model]]) -> list[Model]:
@@ -111,30 +140,26 @@ def _training_data(
     return tr_used, weight, trend
 
 
-def _predict_price(
+def _predict_each(
     models: list[Model],
     pred_rows: pd.DataFrame,
-    tr_used: pd.DataFrame,
     features: list[str],
     trend: target.Trend,
-) -> np.ndarray:
-    """モデルごとに予測して円に戻し、アンサンブルと後処理をかける（工程 7・8）。
+) -> list[np.ndarray]:
+    """モデルごとに予測して円に戻す。
 
     Args:
         models: 学習済みのモデル。
         pred_rows: 予測する行。
-        tr_used: 学習に使った行。後処理に渡す。
         features: モデルに入れる列名の一覧。
         trend: 予測価格を円に戻す相場の指数。
 
     Returns:
-        pred_rows の予測価格（円）。
+        pred_rows のモデルごとの予測価格（円）。models と同じ順に並ぶ。
     """
-    preds = [
+    return [
         target.to_price(
             model.predict(pred_rows[features]), pred_rows, trend, model.per_area
         )
         for model in models
     ]
-    price = ensemble.blend(preds)
-    return postprocess.adjust(price, pred_rows, tr_used, features)

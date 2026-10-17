@@ -14,7 +14,7 @@ from functools import partial
 import numpy as np
 import pandas as pd
 
-from src import pipeline, preprocess, validation
+from src import ensemble, pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
 from src.models.base import Model
@@ -23,7 +23,7 @@ from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
 
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
-# 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
+# 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）。重みは CV の予測から自動で決まる
 # 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
 MODELS: list[Callable[[], Model]] = [
     LGBM,
@@ -42,45 +42,90 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    cv_models = _cross_validate(train, features)
+    cv_models, weights = _cross_validate(train, features)
 
     # 本番：全データで学習し直して test を予測する
     price, test_models = pipeline.fit_and_predict_test(
-        train, test, features, MODELS, cv_models
+        train, test, features, MODELS, cv_models, weights
     )
     _print_importance(test_models)
     _save_submission(test, price)
 
 
-def _cross_validate(train: pd.DataFrame, features: list[str]) -> list[list[Model]]:
+def _cross_validate(
+    train: pd.DataFrame, features: list[str]
+) -> tuple[list[list[Model]], np.ndarray]:
     """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
+
+    混ぜる重みを検証データの答えで決めると CV が良く見えすぎるので、
+    ある fold の重みは残りの fold の予測だけで決めてから、その fold のスコアを測る。
 
     Args:
         train: コンペの学習データ全体。
         features: モデルに入れる列名の一覧。
 
     Returns:
-        fold ごとに学習したモデル。[i] は MODELS[i] を fold ごとに学習したもの。
-        本番の木の本数などを決めるのに使う。
+        fold ごとに学習したモデルと、本番で混ぜる重み。
+        モデルの [i] は MODELS[i] を fold ごとに学習したもの。本番の木の本数などを決めるのに使う。
+        重みは全 fold の予測から決める。
     """
-    scores = []
+    folds = validation.time_series_folds(train)
+    fold_preds = []
     cv_models = [[] for _ in MODELS]
-    for fold, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
+    for tr_index, va_index in folds:
         tr, va = train.iloc[tr_index], train.iloc[va_index]
-        price, fold_models = pipeline.fit_and_predict_valid(tr, va, features, MODELS)
-        score = validation.rmsle(va[TARGET], price)
-        scores.append(score)
+        preds, fold_models = pipeline.fit_and_predict_valid(tr, va, features, MODELS)
+        fold_preds.append(preds)
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
-        best_iterations = [model.best_iteration for model in fold_models]
+
+    scores, mean_scores = [], []
+    for fold, (tr_index, va_index) in enumerate(folds):
+        tr, va = train.iloc[tr_index], train.iloc[va_index]
+        others = [k for k in range(len(folds)) if k != fold]
+        weights = _fit_weights(train, folds, fold_preds, others)
+        price = pipeline.blend_and_adjust(fold_preds[fold], weights, va, tr, features)
+        mean_price = pipeline.blend_and_adjust(fold_preds[fold], None, va, tr, features)
+        scores.append(validation.rmsle(va[TARGET], price))
+        mean_scores.append(validation.rmsle(va[TARGET], mean_price))
+        best_iterations = [models[fold].best_iteration for models in cv_models]
         print(
             f"fold {fold}（検証 {validation.describe_period(va)}）: "
-            f"RMSLE {score:.5f}（best_iteration={best_iterations}）"
+            f"RMSLE {scores[-1]:.5f}（単純平均 {mean_scores[-1]:.5f}、"
+            f"重み={weights.round(3).tolist()}、best_iteration={best_iterations}）"
         )
     print(
         f"CV RMSLE（{validation.N_FOLDS} fold の平均、検証 {validation.VERSION}）: {np.mean(scores):.5f}"
+        f"（単純平均 {np.mean(mean_scores):.5f}）"
     )
-    return cv_models
+    weights = _fit_weights(train, folds, fold_preds, list(range(len(folds))))
+    print(f"本番の重み（全 fold の予測から決めた）: {weights.round(3).tolist()}")
+    return cv_models, weights
+
+
+def _fit_weights(
+    train: pd.DataFrame,
+    folds: list[tuple[np.ndarray, np.ndarray]],
+    fold_preds: list[list[np.ndarray]],
+    use_folds: list[int],
+) -> np.ndarray:
+    """指定した fold の検証データの予測をつなげて、混ぜる重みを決める。
+
+    Args:
+        train: コンペの学習データ全体。
+        folds: validation.time_series_folds の戻り値。
+        fold_preds: [k][i] は fold k の検証データに対する MODELS[i] の予測（円）。
+        use_folds: 重みを決めるのに使う fold の番号。
+
+    Returns:
+        モデルごとの重み。
+    """
+    preds = [
+        np.concatenate([fold_preds[k][i] for k in use_folds])
+        for i in range(len(MODELS))
+    ]
+    va_index = np.concatenate([folds[k][1] for k in use_folds])
+    return ensemble.fit_weights(preds, train[TARGET].to_numpy()[va_index])
 
 
 def _print_importance(test_models: list[Model]) -> None:
