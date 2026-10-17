@@ -20,14 +20,15 @@ LGBM_PARAMS = {
     "learning_rate": 0.05,
     # 木の形と正則化は Optuna で探した（#40、scripts/tune_lgbm.py）。特徴量が大きく変わったら探し直す。
     # 上位の試行はどれも「列を半分以下に絞り、葉を多く細かくする」組み合わせで、細かい値の違いは
-    # CV にほとんど効かない（上位 8 試行の差は 0.0004）
-    "num_leaves": 168,
-    "min_data_in_leaf": 5,
-    "feature_fraction": 0.44,
-    "bagging_fraction": 0.91,
+    # CV にほとんど効かない（上位 8 試行の差は 0.0004）。
+    # #47 の集計列を足した後に探し直しても、同じ組み合わせが最良だった
+    "num_leaves": 226,
+    "min_data_in_leaf": 7,
+    "feature_fraction": 0.4115,
+    "bagging_fraction": 0.8215,
     "bagging_freq": 1,
-    "lambda_l1": 0.0076,
-    "lambda_l2": 0.30,
+    "lambda_l1": 0.0501,
+    "lambda_l2": 0.8537,
     "seed": SEED,
     "verbose": -1,
 }
