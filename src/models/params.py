@@ -49,3 +49,23 @@ CATBOOST_PARAMS = {
     # 学習の記録（catboost_info/）をリポジトリの中に書かせない
     "allow_writing_files": False,
 }
+
+# 2 段目（src/ensemble.py の stacking）。学習できるのは OOF のある数四半期だけなので、
+# 浅い木・葉ごとに多くの行・強い L2 にして合わせすぎを防ぐ
+STACK_PARAMS = {
+    "objective": "huber",
+    "alpha": 0.2,
+    "metric": "rmse",
+    "learning_rate": 0.03,
+    "num_leaves": 7,
+    "max_depth": 3,
+    "min_data_in_leaf": 1000,
+    "lambda_l2": 10.0,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "bagging_freq": 1,
+    "seed": SEED,
+    "verbose": -1,
+}
+# 50〜500 本で CV はほぼ同じ（差 0.0001）。一番古い fold は本数を増やすと悪くなるので少なめにする
+STACK_ROUNDS = 50
