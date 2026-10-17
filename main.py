@@ -18,10 +18,11 @@ from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
 from src.models.base import Model
 from src.models.lgbm import LGBM
+from src.models.linear_residual import LinearResidual
 
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py で混ぜる（例: [LGBM, CatBoost]）
-MODELS: list[Callable[[], Model]] = [LGBM]
+MODELS: list[Callable[[], Model]] = [LGBM, LinearResidual]
 
 
 def main() -> None:
