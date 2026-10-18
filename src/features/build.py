@@ -7,12 +7,19 @@ from collections.abc import Callable
 
 import pandas as pd
 
-from src.features import base, district_latlon, group_aggregates, major_station
+from src.features import (
+    base,
+    district_latlon,
+    group_aggregates,
+    land_price,
+    major_station,
+)
 
 # 上から順に作る。後の関数は、前の関数が足した列を使える。
 # 新しい特徴量は、import に足してから、ここに 1 行足す（例: location.make,）
 MAKERS: list[Callable[[pd.DataFrame], pd.DataFrame]] = [
     district_latlon.make,
+    land_price.make,
     # 主要駅までの距離は、district_latlon が足した緯度・経度から計算するので後ろに置く
     major_station.make,
     group_aggregates.make,
