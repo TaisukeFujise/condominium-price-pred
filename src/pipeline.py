@@ -164,5 +164,5 @@ def _stack_inputs(
         )
         for model in models
     ]
-    in_base = [model.subset is None for model in models]
+    in_base = [model.subset is None and not model.stack_only for model in models]
     return ensemble.make_inputs(preds, in_base, pred_rows, trend)

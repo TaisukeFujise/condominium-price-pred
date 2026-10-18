@@ -20,8 +20,10 @@ from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
 from src.models.base import Model
 from src.models.catboost import CatBoost
+from src.models.hedonic import Hedonic
 from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
+from src.models.target_encoding import TargetEncodedLGBM
 
 
 def _built_over_30(x: pd.DataFrame) -> np.ndarray:
@@ -48,11 +50,48 @@ def _area_30_or_less(x: pd.DataFrame) -> np.ndarray:
     return (x["面積_数値"] <= 30).to_numpy()
 
 
+def _contract_price(x: pd.DataFrame) -> np.ndarray:
+    """成約価格情報の行を選ぶ。
+
+    Args:
+        x: 特徴量。
+
+    Returns:
+        行ごとの True / False。
+    """
+    return (x["価格情報区分"] == "成約価格情報").to_numpy()
+
+
+def _transaction_price(x: pd.DataFrame) -> np.ndarray:
+    """不動産取引価格情報（成約価格情報でない）の行を選ぶ。
+
+    Args:
+        x: 特徴量。
+
+    Returns:
+        行ごとの True / False。
+    """
+    return (x["価格情報区分"] == "不動産取引価格情報").to_numpy()
+
+
+def _outside_23_wards(x: pd.DataFrame) -> np.ndarray:
+    """23 区以外（市町村）の行を選ぶ。
+
+    Args:
+        x: 特徴量。
+
+    Returns:
+        行ごとの True / False。
+    """
+    return (~x["市区町村名"].astype(str).str.endswith("区")).to_numpy()
+
+
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py の 2 段目で混ぜる（例: [LGBM, CatBoost]）。混ぜ方は CV の予測から自動で学習する
 # 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
 # 一部の行だけで学習するモデルは subset に行を選ぶ関数を渡す（例: partial(LGBM, subset=_built_over_30)）。
 # その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ条件には test でも分かる列だけを使う
+# 全行で学習しても平均に入れないモデル（例: Hedonic・TargetEncodedLGBM）は、クラスに stack_only = True を書く
 MODELS: list[Callable[[], Model]] = [
     LGBM,
     partial(LGBM, per_area=False),
@@ -60,6 +99,11 @@ MODELS: list[Callable[[], Model]] = [
     LinearResidual,
     partial(LGBM, subset=_built_over_30),
     partial(LGBM, subset=_area_30_or_less),
+    partial(LGBM, subset=_contract_price),
+    partial(LGBM, subset=_transaction_price),
+    partial(LGBM, subset=_outside_23_wards),
+    Hedonic,
+    TargetEncodedLGBM,
 ]
 
 
