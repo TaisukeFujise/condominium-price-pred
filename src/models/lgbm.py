@@ -1,5 +1,6 @@
 """LightGBM の学習と予測。パラメータは params.py、メソッドの決まりは base.py。"""
 
+from collections.abc import Callable
 from typing import Self
 
 import lightgbm as lgb
@@ -13,17 +14,24 @@ from src.models.params import LGBM_PARAMS
 class LGBM(Model):
     """LightGBM のモデル。1 つのインスタンスは 1 回だけ学習する。"""
 
-    def __init__(self, params: dict = LGBM_PARAMS, per_area: bool = True) -> None:
+    def __init__(
+        self,
+        params: dict = LGBM_PARAMS,
+        per_area: bool = True,
+        subset: Callable[[pd.DataFrame], np.ndarray] | None = None,
+    ) -> None:
         """学習前のモデルを作る。
 
         Args:
             params: LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
             per_area: 目的変数を㎡単価にするか（False なら総額）。
+            subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
         """
         # 初期値の LGBM_PARAMS は全インスタンスで共有されるので、seed だけ変えるときなどに
         # 書き換えが他のモデルへ広がらないようコピーする
         self.params = dict(params)
         self.per_area = per_area
+        self.subset = subset
         self.booster: lgb.Booster | None = None
         self.features: list[str] = []
 
@@ -47,6 +55,8 @@ class LGBM(Model):
         Returns:
             学習済みのモデル（自分自身）。
         """
+        x_train, y_train, weight = self._rows(x_train, y_train, weight)
+        x_valid, y_valid, _ = self._rows(x_valid, y_valid, None)
         self.features = list(x_train.columns)
         self.booster = lgb.train(
             self.params,
@@ -77,6 +87,7 @@ class LGBM(Model):
         """
         # fold ごとに学習データの量が違うので、1 つの fold に合わせず平均を使う
         num_boost_round = round(np.mean([m.best_iteration for m in cv_models]))
+        x, y, weight = self._rows(x, y, weight)
         self.features = list(x.columns)
         self.booster = lgb.train(
             self.params,
@@ -114,6 +125,24 @@ class LGBM(Model):
             index=self.features,
         )
         return (gain / gain.sum()).sort_values(ascending=False)
+
+    def _rows(
+        self, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
+    ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None]:
+        """学習に使う行（subset）だけに絞る。
+
+        Args:
+            x: 特徴量。
+            y: 目的変数。
+            weight: 行ごとの重み。None なら全行同じ重み。
+
+        Returns:
+            絞った特徴量・目的変数・重み。subset が None ならそのまま。
+        """
+        if self.subset is None:
+            return x, y, weight
+        rows = self.subset(x)
+        return x[rows], y[rows], None if weight is None else weight[rows]
 
     def _trained_booster(self) -> lgb.Booster:
         """学習済みの booster を返す。
