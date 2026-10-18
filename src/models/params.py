@@ -63,8 +63,10 @@ HEDONIC_PARAMS = {
 # 2 段目（src/ensemble.py の stacking）。学習できるのは OOF のある数四半期だけなので、
 # 浅い木・葉ごとに多くの行・強い L2 にして合わせすぎを防ぐ
 STACK_PARAMS = {
-    "objective": "huber",
-    "alpha": 0.2,
+    # 1 段目と違い Huber にしない。Huber は残差の中央値に近いものを狙い、安い側に外れる取引のせいで
+    # 平均より高めにずらす。RMSLE で一番良いのは平均なので二乗誤差にする（#73。補正の平均を引く
+    # ensemble.blend と合わせて CV −0.00066。Huber のまま平均を引くだけでは −0.00046）
+    "objective": "regression",
     "metric": "rmse",
     "learning_rate": 0.03,
     "num_leaves": 7,

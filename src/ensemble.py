@@ -6,6 +6,7 @@
 決定木以外の弱いモデル（Model.stack_only）も同じ扱いにする。
 土台の値そのものは 2 段目に入れない。入れると CV はさらに良くなるが、それは予測の高さごとの補正で、
 CV では良くなり Public LB では悪くなった isotonic 較正（src/postprocess.py）と同じ種類の補正だから。
+同じ理由で、2 段目には全体の水準も動かさせない（blend で補正の平均を引く）。水準は相場の指数（src/target.py）が決める。
 2 段目は価格（答え）から学習するので、学習に使った行のスコアは良く見えすぎる。
 CV では、ある fold の 2 段目は残りの fold の予測だけで学習する（main.py の _cross_validate）。
 """
@@ -86,7 +87,10 @@ def blend(inputs: pd.DataFrame, stacker: lgb.Booster | None) -> np.ndarray:
     x, base = _split(inputs)
     if stacker is None:
         return np.expm1(base)
-    return np.expm1(base + stacker.predict(x))
+    correction = stacker.predict(x)
+    # 2 段目がほかの fold から学んだ水準のずれは、fold ごとに向きが違い当てにならない（#67 の表）。
+    # 予測する行の補正の平均を引くと 3 fold すべてで良くなった（#73）。正解は使わない
+    return np.expm1(base + correction - correction.mean())
 
 
 def _split(inputs: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
