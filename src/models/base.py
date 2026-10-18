@@ -20,10 +20,13 @@ class Model(ABC):
         per_area: 目的変数を㎡単価にするか（False なら総額）。src/target.py の to_target に渡す。
         subset: 学習に使う行を絞る条件（特徴量の表 → 行ごとの True / False）。None なら全行で学習する。
             絞ったモデルも予測は全行に出すが、平均の土台には入れず、src/ensemble.py の 2 段目の入力にだけ使う。
+        stack_only: True なら、全行で学習しても平均の土台には入れず、2 段目の入力にだけ使う。
+            単独では弱いが、決定木と違う間違え方をするモデル（hedonic.py など）に使う。
     """
 
     per_area: bool = True
     subset: Callable[[pd.DataFrame], np.ndarray] | None = None
+    stack_only: bool = False
 
     @abstractmethod
     def fit_with_validation(
