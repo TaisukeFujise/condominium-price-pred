@@ -43,3 +43,13 @@ CATBOOST_PARAMS = {
     # 学習の記録（catboost_info/）をリポジトリの中に書かせない
     "allow_writing_files": False,
 }
+
+# ほかのモデルと間違え方を変えるためのモデルなので、層の数・幅は小さめの既定値から始めた
+MLP_PARAMS = {
+    "hidden_layer_sizes": (256, 128),
+    # 重みの L2 正則化。地区名など one-hot の列が多いので、既定の 1e-4 より強めにする
+    "alpha": 1e-3,
+    "batch_size": 512,
+    "learning_rate_init": 1e-3,
+    "random_state": SEED,
+}
