@@ -18,7 +18,7 @@ from src import ensemble, pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
 from src.models.base import Model
-from src.models.catboost import CatBoost
+from src.models.catboost import DECADE, CatBoost
 from src.models.hedonic import Hedonic
 from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
@@ -91,6 +91,12 @@ def _outside_23_wards(x: pd.DataFrame) -> np.ndarray:
 # 一部の行だけで学習するモデルは subset に行を選ぶ関数を渡す（例: partial(LGBM, subset=_built_over_30)。CatBoost なども同じ）。
 # その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ条件には test でも分かる列だけを使う
 # 全行で学習しても平均に入れないモデル（例: Hedonic・TargetEncodedLGBM）は、クラスに stack_only = True を書く
+# カテゴリ列を 2 つずつつないで使う CatBoost（Issue #84）。組み合わせはこのモデルの中でだけ作り、2 段目の入力にだけ使う
+CAT_COMBOS = [
+    ("市区町村名", "間取り"),
+    ("建物の構造", DECADE),
+    ("価格情報区分", "市区町村名"),
+]
 MODELS: list[Callable[[], Model]] = [
     LGBM,
     partial(LGBM, per_area=False),
@@ -103,6 +109,7 @@ MODELS: list[Callable[[], Model]] = [
     partial(LGBM, subset=_outside_23_wards),
     Hedonic,
     TargetEncodedLGBM,
+    partial(CatBoost, cat_combos=CAT_COMBOS),
 ]
 
 

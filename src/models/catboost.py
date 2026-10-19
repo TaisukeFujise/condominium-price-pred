@@ -1,4 +1,10 @@
-"""CatBoost の学習と予測。パラメータは params.py、メソッドの決まりは base.py。"""
+"""CatBoost の学習と予測。パラメータは params.py、メソッドの決まりは base.py。
+
+cat_combos を渡すと、カテゴリ列を 2 つずつ文字列でつないだ新しいカテゴリを、このモデルの中でだけ足す（Issue #84）。
+「市区町村 × 間取り」のように 1 列ずつでは表せない組を CatBoost の ordered target statistics に渡す狙い。
+組み合わせの列は件数の多いカテゴリになり LightGBM には向かないので、src/features/ には足さない。
+cat_combos を渡したモデルは平均の土台に入れず、2 段目の入力にだけ使う（stack_only）。
+"""
 
 from collections.abc import Callable
 from typing import Self
@@ -10,6 +16,9 @@ from catboost import CatBoostRegressor, Pool
 from src.models.base import Model, fill_missing_category
 from src.models.params import CATBOOST_PARAMS
 
+# 組み合わせに使える、特徴量にない列。建築年を 10 年ごとの帯にする
+DECADE = "建築年_10年帯"
+
 
 class CatBoost(Model):
     """CatBoost のモデル。1 つのインスタンスは 1 回だけ学習する。"""
@@ -19,6 +28,7 @@ class CatBoost(Model):
         params: dict = CATBOOST_PARAMS,
         per_area: bool = True,
         subset: Callable[[pd.DataFrame], np.ndarray] | None = None,
+        cat_combos: list[tuple[str, str]] | None = None,
     ) -> None:
         """学習前のモデルを作る。
 
@@ -26,11 +36,15 @@ class CatBoost(Model):
             params: CatBoost のパラメータ。省略すると params.py の CATBOOST_PARAMS。
             per_area: 目的変数を㎡単価にするか（False なら総額）。
             subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
+            cat_combos: 2 つずつつないで新しいカテゴリにする列の組。列名には DECADE（建築年の 10 年帯）も使える。
+                渡すと stack_only になる。None なら列を足さない。
         """
         # 初期値の CATBOOST_PARAMS は全インスタンスで共有されるので、書き換えが広がらないようコピーする
         self.params = dict(params)
         self.per_area = per_area
         self.subset = subset
+        self.cat_combos = cat_combos or []
+        self.stack_only = bool(cat_combos)
         self.model: CatBoostRegressor | None = None
         self.features: list[str] = []
         self._best_iteration: int | None = None
@@ -56,6 +70,7 @@ class CatBoost(Model):
         Returns:
             学習済みのモデル（自分自身）。
         """
+        x_train, x_valid = self._with_combos(x_train), self._with_combos(x_valid)
         self.features = list(x_train.columns)
         # CatBoost の Huber は 0 から学習を始め（boost_from_average が使えない）、1 回に動ける幅が
         # 小さいので、目的変数の水準に届くまでに木を使い切る。LightGBM と同じく平均から始める
@@ -91,6 +106,7 @@ class CatBoost(Model):
         """
         # fold ごとに学習データの量が違うので、1 つの fold に合わせず平均を使う
         iterations = round(np.mean([m.best_iteration for m in cv_models]))
+        x = self._with_combos(x)
         self.features = list(x.columns)
         self._offset = _weighted_mean(y, weight)
         self.model = CatBoostRegressor(**self.params, iterations=iterations)
@@ -106,7 +122,26 @@ class CatBoost(Model):
         Returns:
             目的変数の予測。
         """
+        x = self._with_combos(x)
         return self._trained_model().predict(_pool(x, None, None)) + self._offset
+
+    def _with_combos(self, x: pd.DataFrame) -> pd.DataFrame:
+        """cat_combos の組み合わせの列を足した特徴量を返す。cat_combos が空なら x のまま。
+
+        Args:
+            x: 特徴量。
+
+        Returns:
+            組み合わせの列（category 型）を足した特徴量。
+        """
+        if not self.cat_combos:
+            return x
+        out = x.copy()
+        for left, right in self.cat_combos:
+            out[f"{left}×{right}"] = (
+                _as_text(x, left) + "|" + _as_text(x, right)
+            ).astype("category")
+        return out
 
     @property
     def best_iteration(self) -> int | None:
@@ -135,6 +170,23 @@ class CatBoost(Model):
                 "まだ学習していない。先に fit か fit_with_validation を呼ぶ"
             )
         return self.model
+
+
+def _as_text(x: pd.DataFrame, column: str) -> pd.Series:
+    """組み合わせに使う列を文字列にする。DECADE は建築年_数値から作る。欠損は "欠損" にする。
+
+    Args:
+        x: 特徴量。
+        column: 列名。DECADE なら建築年の 10 年帯。
+
+    Returns:
+        行ごとの文字列。
+    """
+    if column == DECADE:
+        values = (x["建築年_数値"] // 10 * 10).astype("Int64").astype(str)
+    else:
+        values = x[column].astype(str)
+    return values.where(x[column].notna(), "欠損") if column != DECADE else values
 
 
 def _weighted_mean(y: pd.Series, weight: pd.Series | None) -> float:
