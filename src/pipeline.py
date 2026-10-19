@@ -26,7 +26,7 @@ def fit_and_predict_valid(
 ) -> tuple[pd.DataFrame, list[Model]]:
     """CV 用。va のスコアで繰り返しの回数を決め（early stopping）、va をモデルごとに予測する。
 
-    2 段目はほかの fold の予測から学習するので、ここでは混ぜない（blend_and_adjust で混ぜる）。
+    2 段目は前の期間の fold の予測から学習するので、ここでは混ぜない（blend_and_adjust で混ぜる）。
 
     Args:
         tr: fold の学習データ。
@@ -38,16 +38,18 @@ def fit_and_predict_valid(
         va の 2 段目の入力（ensemble.make_inputs）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
     """
     tr_used, weight, trend = _training_data(tr)
-    models = [
-        model.fit_with_validation(
+    models = []
+    for model in _new_models(model_classes):
+        x_tr, y_tr, weight_tr = _rows(
+            model,
             tr_used[features],
             target.to_target(tr_used, trend, model.per_area),
-            va[features],
-            target.to_target(va, trend, model.per_area),
             weight,
         )
-        for model in _new_models(model_classes)
-    ]
+        x_va, y_va, _ = _rows(
+            model, va[features], target.to_target(va, trend, model.per_area), None
+        )
+        models.append(model.fit_with_validation(x_tr, y_tr, x_va, y_va, weight_tr))
     return _stack_inputs(models, va, features, trend), models
 
 
@@ -74,15 +76,15 @@ def fit_and_predict_test(
         test の予測価格（円）と、学習済みのモデル。
     """
     tr_used, weight, trend = _training_data(train)
-    models = [
-        model.fit(
+    models = []
+    for model, cv in zip(_new_models(model_classes), cv_models, strict=True):
+        x, y, weight_used = _rows(
+            model,
             tr_used[features],
             target.to_target(tr_used, trend, model.per_area),
             weight,
-            cv,
         )
-        for model, cv in zip(_new_models(model_classes), cv_models, strict=True)
-    ]
+        models.append(model.fit(x, y, weight_used, cv))
     inputs = _stack_inputs(models, test, features, trend)
     return blend_and_adjust(inputs, stacker, test, train, features), models
 
@@ -139,6 +141,26 @@ def _training_data(
     tr_used, weight = selection.select(tr)
     trend = target.fit_trend(tr_used)
     return tr_used, weight, trend
+
+
+def _rows(
+    model: Model, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
+) -> tuple[pd.DataFrame, pd.Series, pd.Series | None]:
+    """モデルが学習に使う行（Model.subset）だけに絞る。
+
+    Args:
+        model: 学習前のモデル。
+        x: 特徴量。
+        y: 目的変数。
+        weight: 行ごとの重み。None なら全行同じ重み。
+
+    Returns:
+        絞った特徴量・目的変数・重み。subset が None ならそのまま。
+    """
+    if model.subset is None:
+        return x, y, weight
+    rows = model.subset(x)
+    return x[rows], y[rows], None if weight is None else weight[rows]
 
 
 def _stack_inputs(

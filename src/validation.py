@@ -37,9 +37,9 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     for k in range(N_FOLDS):
         valid_end = last - k * VALID_QUARTERS
         valid_start = valid_end - VALID_QUARTERS + 1
-        tr_index = np.flatnonzero(quarter < valid_start)
-        va_index = np.flatnonzero(quarter.between(valid_start, valid_end))
-        folds.append((tr_index, va_index))
+        tr_pos = np.flatnonzero(quarter < valid_start)
+        va_pos = np.flatnonzero(quarter.between(valid_start, valid_end))
+        folds.append((tr_pos, va_pos))
     return folds
 
 

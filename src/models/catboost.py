@@ -1,26 +1,36 @@
 """CatBoost の学習と予測。パラメータは params.py、メソッドの決まりは base.py。"""
 
+from collections.abc import Callable
 from typing import Self
 
 import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor, Pool
 
-from src.models.base import Model
+from src.models.base import Model, fill_missing_category
 from src.models.params import CATBOOST_PARAMS
 
 
 class CatBoost(Model):
     """CatBoost のモデル。1 つのインスタンスは 1 回だけ学習する。"""
 
-    def __init__(self, params: dict = CATBOOST_PARAMS) -> None:
+    def __init__(
+        self,
+        params: dict = CATBOOST_PARAMS,
+        per_area: bool = True,
+        subset: Callable[[pd.DataFrame], np.ndarray] | None = None,
+    ) -> None:
         """学習前のモデルを作る。
 
         Args:
             params: CatBoost のパラメータ。省略すると params.py の CATBOOST_PARAMS。
+            per_area: 目的変数を㎡単価にするか（False なら総額）。
+            subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
         """
         # 初期値の CATBOOST_PARAMS は全インスタンスで共有されるので、書き換えが広がらないようコピーする
         self.params = dict(params)
+        self.per_area = per_area
+        self.subset = subset
         self.model: CatBoostRegressor | None = None
         self.features: list[str] = []
         self._best_iteration: int | None = None
@@ -151,11 +161,6 @@ def _pool(x: pd.DataFrame, y: pd.Series | None, weight: pd.Series | None) -> Poo
     Returns:
         CatBoost に渡す Pool。
     """
+    # 文字列にするとカテゴリ列の型が消えるので、列名は先に取っておく
     cat_features = list(x.select_dtypes("category").columns)
-    # CatBoost のカテゴリ列は欠損を受け取れないので、欠損も 1 つの値として文字列にする。
-    # LightGBM も欠損を独立した値として分岐するので、扱いがそろう。
-    # astype(str) は pandas の版によって欠損を NaN のまま残すので、先に埋める
-    x = x.assign(
-        **{c: x[c].astype(object).fillna("欠損").astype(str) for c in cat_features}
-    )
-    return Pool(x, y, cat_features=cat_features, weight=weight)
+    return Pool(fill_missing_category(x), y, cat_features=cat_features, weight=weight)

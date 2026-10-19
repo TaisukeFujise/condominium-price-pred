@@ -3,6 +3,7 @@
 pipeline.py と main.py はこのメソッドだけを使うので、Model を継承したクラスを書けば
 main.py の MODELS に足すだけでモデルを足したり付け替えたりできる（例は lgbm.py）。
 メソッドが 1 つでも足りないと、インスタンスを作った時点でエラーになる。
+複数のモデルで同じ前処理（fill_missing_category）もここに置く。
 """
 
 from abc import ABC, abstractmethod
@@ -19,6 +20,7 @@ class Model(ABC):
     Attributes:
         per_area: 目的変数を㎡単価にするか（False なら総額）。src/target.py の to_target に渡す。
         subset: 学習に使う行を絞る条件（特徴量の表 → 行ごとの True / False）。None なら全行で学習する。
+            行を絞るのは src/pipeline.py なので、モデルの側では何もしなくてよい。
             絞ったモデルも予測は全行に出すが、平均の土台には入れず、src/ensemble.py の 2 段目の入力にだけ使う。
         stack_only: True なら、全行で学習しても平均の土台には入れず、2 段目の入力にだけ使う。
             単独では弱いが、決定木と違う間違え方をするモデル（hedonic.py など）に使う。
@@ -95,3 +97,20 @@ class Model(ABC):
         Returns:
             特徴量ごとの重要度（合計 1）。大きい順に並ぶ。出せないモデルでは None。
         """
+
+
+def fill_missing_category(x: pd.DataFrame) -> pd.DataFrame:
+    """カテゴリ列の欠損を「欠損」という 1 つの値にして、文字列の列にする。
+
+    Args:
+        x: 特徴量。
+
+    Returns:
+        カテゴリ列を文字列にした特徴量。ほかの列はそのまま。
+    """
+    # CatBoost や one-hot はカテゴリ列の欠損を受け取れない。LightGBM も欠損を独立した値として
+    # 分岐するので、扱いがそろう。astype(str) は pandas の版によって欠損を NaN のまま残すので、先に埋める
+    cat_columns = x.select_dtypes("category").columns
+    return x.assign(
+        **{c: x[c].astype(object).fillna("欠損").astype(str) for c in cat_columns}
+    )

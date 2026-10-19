@@ -27,8 +27,8 @@ def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression
     Returns:
         学習済みの IsotonicRegression。
     """
-    inner_tr_index, inner_va_index = validation.time_series_folds(tr)[0]
-    inner_tr, inner_va = tr.iloc[inner_tr_index], tr.iloc[inner_va_index]
+    inner_tr_pos, inner_va_pos = validation.time_series_folds(tr)[0]
+    inner_tr, inner_va = tr.iloc[inner_tr_pos], tr.iloc[inner_va_pos]
 
     inner_trend = target.fit_trend(inner_tr)
     model = LGBM().fit_with_validation(
