@@ -18,6 +18,8 @@ dev = [
     "ipykernel>=7.4.0",
     "jupyterlab>=4.6.4",
     "matplotlib-fontja>=1.1.0",
+    "mypy>=2.4.0",
+    "pandas-stubs>=3.0.5.260914",
     "ruff>=0.16.10",
 ]
 
@@ -31,3 +33,15 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 # 日本語の全角記号（（）、：など）を「紛らわしい文字」として指摘しないようにする
 # 行の長さは ruff format が折り返すので、折り返せない文章（docstring・文字列）は指摘しない
 ignore = ["RUF001", "RUF002", "RUF003", "E501"]
+
+[tool.mypy]
+# コンペのコードだけを調べる。ノートブック（各自の試行）と slides/（発表資料の作成）は対象外
+files = ["main.py", "src", "scripts"]
+# 誤検知を黙らせるときは、どの指摘かを書かせる。ライブラリが直って不要になった ignore も指摘させる
+enable_error_code = ["ignore-without-code"]
+warn_unused_ignores = true
+
+# 型情報を持たないライブラリ。全体で無視すると、自分のモジュールの import の間違いも見逃すので、名前を挙げる
+[[tool.mypy.overrides]]
+module = ["catboost", "sklearn.*"]
+ignore_missing_imports = true

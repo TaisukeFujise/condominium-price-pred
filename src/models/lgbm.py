@@ -103,7 +103,9 @@ class LGBM(Model):
             目的変数の予測。
         """
         # best_iteration がない（fit() で作った）モデルでは、全部の木を使う
-        return self._trained_booster().predict(x, num_iteration=self.best_iteration)
+        return np.asarray(
+            self._trained_booster().predict(x, num_iteration=self.best_iteration)
+        )
 
     @property
     def best_iteration(self) -> int | None:

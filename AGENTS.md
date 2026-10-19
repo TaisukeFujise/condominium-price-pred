@@ -35,7 +35,8 @@
 - ファイルの外から呼ばない関数は、名前を `_` で始める（例：`main.py` の `_cross_validate`、`src/pipeline.py` の `_training_data`）。外から呼ぶ関数だけを見れば、そのファイルの使い方が分かるようにするため
 - データの変数名をそろえる。`train` / `test` はコンペのデータ全体（index は 0 からの連番）だけに使う。fold の学習データ・検証データは `tr` / `va`、その行番号は `tr_pos` / `va_pos`（position。`.iloc` で引く位置）、予測する行は `pred_rows`
 - `time_series_folds` が返すのは 0 始まりの行番号の配列で、index のラベルではない。表から引くときは `.loc` ではなく `.iloc` を使う
-- コードを変えたら `uv run ruff format .` と `uv run ruff check --fix .` を実行し、指摘がない状態にする
+- コードを変えたら `uv run ruff format .`・`uv run ruff check --fix .`・`uv run mypy` を実行し、指摘がない状態にする
+- mypy の指摘は、型ヒントかコードを直して消す。ライブラリの型情報が間違っている誤検知だけは、その行に `# type: ignore[コード]` を付けて黙らせ、前の行に理由を書く（例：`src/target.py` の `np.log`）。書き直しで型が合い、結果も変わらないなら、黙らせずに書き直す
 
 ## 実験のルール
 
