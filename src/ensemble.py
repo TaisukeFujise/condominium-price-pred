@@ -72,7 +72,8 @@ def fit_stacker(
         cv_true_prices: fold ごとの、検証データの正解の価格（円）。
 
     Returns:
-        学習済みの 2 段目。
+        学習済みの 2 段目。predict が返すのは土台からのずれだけで、土台は足されない
+        （学習で土台を init_score に渡したため）。予測するときは blend を使う。
     """
     x, base = _split(pd.concat(cv_stack_inputs, ignore_index=True))
     log_true = np.log1p(np.concatenate(cv_true_prices))
