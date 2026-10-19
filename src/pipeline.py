@@ -26,7 +26,7 @@ def fit_and_predict_valid(
 ) -> tuple[pd.DataFrame, list[Model]]:
     """CV 用。va のスコアで繰り返しの回数を決め（early stopping）、va をモデルごとに予測する。
 
-    2 段目はほかの fold の予測から学習するので、ここでは混ぜない（blend_and_adjust で混ぜる）。
+    2 段目は前の期間の fold の予測から学習するので、ここでは混ぜない（blend_and_adjust で混ぜる）。
 
     Args:
         tr: fold の学習データ。

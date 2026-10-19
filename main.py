@@ -88,7 +88,8 @@ def _cross_validate(
     """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
 
     2 段目（混ぜ方）を検証データの答えで学習すると CV が良く見えすぎるので、
-    ある fold の 2 段目は残りの fold の予測だけで学習してから、その fold のスコアを測る。
+    ある fold の 2 段目は、それより前の期間の fold の予測だけで学習してから、その fold のスコアを測る。
+    いちばん前の期間の fold には学習に使える fold がないので、2 段目なし（土台のまま）で測る。
 
     Args:
         train: コンペの学習データ全体。
@@ -113,20 +114,28 @@ def _cross_validate(
     scores, base_scores = [], []
     for fold, (tr_index, va_index) in enumerate(folds):
         tr, va = train.iloc[tr_index], train.iloc[va_index]
-        others = [k for k in range(len(folds)) if k != fold]
-        stacker = ensemble.fit_stacker(
-            [fold_inputs[k] for k in others], [fold_prices[k] for k in others]
-        )
-        price = pipeline.blend_and_adjust(fold_inputs[fold], stacker, va, tr, features)
+        # 本番の 2 段目は test より前の期間の予測しか見られないので、CV でも後の期間の fold は使わない。
+        # folds は新しい期間から順に並ぶので、前の期間の fold は番号が大きい方
+        earlier = [k for k in range(len(folds)) if k > fold]
         base_price = pipeline.blend_and_adjust(
             fold_inputs[fold], None, va, tr, features
         )
+        if earlier:
+            stacker = ensemble.fit_stacker(
+                [fold_inputs[k] for k in earlier], [fold_prices[k] for k in earlier]
+            )
+            price = pipeline.blend_and_adjust(
+                fold_inputs[fold], stacker, va, tr, features
+            )
+        else:
+            price = base_price
         scores.append(validation.rmsle(va[TARGET], price))
         base_scores.append(validation.rmsle(va[TARGET], base_price))
         best_iterations = [models[fold].best_iteration for models in cv_models]
         print(
             f"fold {fold}（検証 {validation.describe_period(va)}）: "
             f"RMSLE {scores[-1]:.5f}（2 段目なし {base_scores[-1]:.5f}、"
+            f"2 段目の学習に使った fold {earlier}、"
             f"best_iteration={best_iterations}）"
         )
     print(

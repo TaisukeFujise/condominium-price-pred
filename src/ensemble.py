@@ -6,7 +6,7 @@
 土台の値そのものは 2 段目に入れない。入れると CV はさらに良くなるが、それは予測の高さごとの補正で、
 CV では良くなり Public LB では悪くなった isotonic 較正（src/postprocess.py）と同じ種類の補正だから。
 2 段目は価格（答え）から学習するので、学習に使った行のスコアは良く見えすぎる。
-CV では、ある fold の 2 段目は残りの fold の予測だけで学習する（main.py の _cross_validate）。
+CV では、ある fold の 2 段目はそれより前の期間の fold の予測だけで学習する（main.py の _cross_validate）。
 """
 
 import lightgbm as lgb
