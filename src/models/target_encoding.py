@@ -26,6 +26,13 @@ UNITS = {
     "地区": ["市区町村名", "地区名"],
     "地区×建築年": ["市区町村名", "地区名", "建築年_数値"],
 }
+# 駅と駅×建築年も足した単位（#80）。駅の単位だけに置き換えると効かず、上の単位と別のモデルとして
+# 並べると 2 段目が良くなった。地区とは違う切り口の平均を持つモデルが 1 本増える効果と考えている
+STATION_UNITS = {
+    **UNITS,
+    "駅": ["最寄駅：名称"],
+    "駅×建築年": ["最寄駅：名称", "建築年_数値"],
+}
 # 件数の少ない単位の平均を、全体の平均に寄せる強さ（何件分の全体の平均を混ぜるか）
 SMOOTHING = 3.0
 _N_SPLITS = 5
@@ -41,6 +48,7 @@ class TargetEncodedLGBM(LGBM):
         params: dict = LGBM_PARAMS,
         per_area: bool = True,
         subset: Callable[[pd.DataFrame], np.ndarray] | None = None,
+        units: dict[str, list[str]] = UNITS,
     ) -> None:
         """学習前のモデルを作る。
 
@@ -48,8 +56,10 @@ class TargetEncodedLGBM(LGBM):
             params: LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
             per_area: 目的変数を㎡単価にするか（False なら総額）。
             subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
+            units: 平均を作る単位（単位の名前 → 単位を決める列）。省略すると UNITS。
         """
         super().__init__(params, per_area, subset)
+        self.units = units
         self._tables: dict[str, pd.DataFrame] = {}
         self._prior = 0.0
 
@@ -73,11 +83,11 @@ class TargetEncodedLGBM(LGBM):
         Returns:
             学習済みのモデル（自分自身）。
         """
-        self._tables, self._prior = _fit_tables(x_train, y_train)
+        self._tables, self._prior = _fit_tables(x_train, y_train, self.units)
         return super().fit_with_validation(
-            _add_out_of_fold(x_train, y_train),
+            _add_out_of_fold(x_train, y_train, self.units),
             y_train,
-            _add(x_valid, self._tables, self._prior),
+            _add(x_valid, self._tables, self._prior, self.units),
             y_valid,
             weight,
         )
@@ -100,8 +110,8 @@ class TargetEncodedLGBM(LGBM):
         Returns:
             学習済みのモデル（自分自身）。
         """
-        self._tables, self._prior = _fit_tables(x, y)
-        return super().fit(_add_out_of_fold(x, y), y, weight, cv_models)
+        self._tables, self._prior = _fit_tables(x, y, self.units)
+        return super().fit(_add_out_of_fold(x, y, self.units), y, weight, cv_models)
 
     def predict(self, x: pd.DataFrame) -> np.ndarray:
         """学習データから作った平均の列を足して予測する。
@@ -112,7 +122,7 @@ class TargetEncodedLGBM(LGBM):
         Returns:
             目的変数の予測。
         """
-        return super().predict(_add(x, self._tables, self._prior))
+        return super().predict(_add(x, self._tables, self._prior, self.units))
 
 
 def _keys(x: pd.DataFrame, columns: list[str]) -> np.ndarray:
@@ -132,13 +142,14 @@ def _keys(x: pd.DataFrame, columns: list[str]) -> np.ndarray:
 
 
 def _fit_tables(
-    x: pd.DataFrame, y: pd.Series | np.ndarray
+    x: pd.DataFrame, y: pd.Series | np.ndarray, units: dict[str, list[str]]
 ) -> tuple[dict[str, pd.DataFrame], float]:
     """単位ごとに、目的変数の合計と件数を数える。
 
     Args:
         x: 学習データの特徴量。
         y: 学習データの目的変数。
+        units: 平均を作る単位。
 
     Returns:
         単位の名前 → 単位の文字列ごとの合計（sum）と件数（count）の表、と全体の平均。
@@ -148,13 +159,16 @@ def _fit_tables(
         name: pd.DataFrame({"key": _keys(x, columns), "y": y_array})
         .groupby("key")["y"]
         .agg(["sum", "count"])
-        for name, columns in UNITS.items()
+        for name, columns in units.items()
     }
     return tables, float(y_array.mean())
 
 
 def _add(
-    x: pd.DataFrame, tables: dict[str, pd.DataFrame], prior: float
+    x: pd.DataFrame,
+    tables: dict[str, pd.DataFrame],
+    prior: float,
+    units: dict[str, list[str]],
 ) -> pd.DataFrame:
     """単位ごとの平均（全体の平均に寄せたもの）と件数の列を足す。
 
@@ -162,12 +176,13 @@ def _add(
         x: 特徴量。
         tables: _fit_tables で数えた表。
         prior: 全体の平均。件数 0 の単位はこの値になる。
+        units: 平均を作る単位。_fit_tables に渡したものと同じ。
 
     Returns:
         列を足した特徴量。
     """
     out = x.copy()
-    for name, columns in UNITS.items():
+    for name, columns in units.items():
         keys = pd.Series(_keys(x, columns))
         total = keys.map(tables[name]["sum"]).fillna(0).to_numpy()
         count = keys.map(tables[name]["count"]).fillna(0).to_numpy()
@@ -176,12 +191,15 @@ def _add(
     return out
 
 
-def _add_out_of_fold(x: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
+def _add_out_of_fold(
+    x: pd.DataFrame, y: pd.Series, units: dict[str, list[str]]
+) -> pd.DataFrame:
     """学習データの行に、その行を含まない残りの行から作った平均の列を足す。
 
     Args:
         x: 学習データの特徴量。
         y: 学習データの目的変数。
+        units: 平均を作る単位。
 
     Returns:
         列を足した特徴量。
@@ -189,7 +207,7 @@ def _add_out_of_fold(x: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
     y_array = np.asarray(y)
     parts = []
     for rest, part in KFold(_N_SPLITS, shuffle=True, random_state=SEED).split(x):
-        tables, prior = _fit_tables(x.iloc[rest], y_array[rest])
-        parts.append(_add(x.iloc[part], tables, prior))
+        tables, prior = _fit_tables(x.iloc[rest], y_array[rest], units)
+        parts.append(_add(x.iloc[part], tables, prior, units))
     # KFold は行を並べ替えるので、元の順に戻す
     return pd.concat(parts).loc[x.index]
