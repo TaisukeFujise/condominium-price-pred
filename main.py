@@ -15,6 +15,8 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
+# Issue #80 の確認用（駅・駅×建築年の単位を足した target encoding）
+from f80.te import STATION_UNITS, ParamTE
 from src import ensemble, pipeline, preprocess, validation
 from src.config import SUBMISSION_DIR, TARGET
 from src.features.build import build_features
@@ -24,9 +26,6 @@ from src.models.hedonic import Hedonic
 from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
 from src.models.target_encoding import TargetEncodedLGBM
-
-# Issue #80 の確認用（駅・駅×建築年の単位を足した target encoding）
-from f80.te import STATION_UNITS, ParamTE
 
 
 def _built_over_30(x: pd.DataFrame) -> np.ndarray:
