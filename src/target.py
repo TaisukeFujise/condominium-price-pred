@@ -1,6 +1,7 @@
 """目的変数の設計（工程 4）。モデルに何を予測させるか。
 
-目的変数は「log(㎡単価) − 相場の指数」。次の 3 つの関数で作り、円に戻す。
+目的変数は「log(㎡単価) − 相場の指数」（per_area=False のモデルは「log(総額) − 相場の指数」）。
+次の 3 つの関数で作り、円に戻す。
 - fit_trend：学習データから、四半期ごとの相場の指数を作る。
 - to_target：価格を目的変数にする。
 - to_price：モデルの予測を円の価格に戻す（to_target の逆）。
@@ -194,7 +195,7 @@ def to_target(rows: pd.DataFrame, trend: Trend, per_area: bool = True) -> pd.Ser
 def to_price(
     pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend, per_area: bool = True
 ) -> np.ndarray:
-    """モデルの予測に指数を足して㎡単価に戻し、面積を掛けて総額にする。to_target の逆変換。
+    """モデルの予測に指数を足して、円の価格に戻す。to_target の逆変換。
 
     Args:
         pred: モデルの予測。

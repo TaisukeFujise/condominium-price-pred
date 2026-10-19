@@ -20,7 +20,7 @@ class Model(ABC):
     Attributes:
         per_area: 目的変数を㎡単価にするか（False なら総額）。src/target.py の to_target に渡す。
         subset: 学習に使う行を選ぶ関数（特徴量の表を受け取り、行ごとの True / False を返す）。
-            None なら全行で学習する。行を選ぶのは src/pipeline.py なので、モデルの側では何もしなくてよい。
+            None なら全行で学習する。行を選ぶのは src/pipeline.py の _apply_subset なので、モデルの側では何もしなくてよい。
             予測は全行に出す。その予測は、src/ensemble.py の土台の平均には入れず、2 段目の入力にだけ使う。
     """
 

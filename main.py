@@ -52,7 +52,7 @@ def _area_30_or_less(x: pd.DataFrame) -> np.ndarray:
 # 2 つ以上並べると、予測を src/ensemble.py の 2 段目で混ぜる（例: [LGBM, CatBoost]）。混ぜ方は CV の予測から自動で学習する
 # 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
 # 一部の行だけで学習するモデルは subset に行を選ぶ関数を渡す（例: partial(LGBM, subset=_built_over_30)。CatBoost なども同じ）。
-# その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ条件には test でも分かる列だけを使う
+# その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ関数には特徴量（features）の列しか渡らないので、条件には特徴量の列を使う
 MODELS: list[Callable[[], Model]] = [
     LGBM,
     partial(LGBM, per_area=False),

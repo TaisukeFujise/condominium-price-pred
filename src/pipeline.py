@@ -44,13 +44,13 @@ def fit_and_predict_valid(
     tr_used, weight, trend = _training_data(tr)
     models: list[Model] = []
     for model in _new_models(model_classes):
-        x_tr, y_tr, weight_tr = _rows(
+        x_tr, y_tr, weight_tr = _apply_subset(
             model,
             tr_used[features],
             target.to_target(tr_used, trend, model.per_area),
             weight,
         )
-        x_va, y_va, _ = _rows(
+        x_va, y_va, _ = _apply_subset(
             model, va[features], target.to_target(va, trend, model.per_area), None
         )
         models.append(model.fit_with_validation(x_tr, y_tr, x_va, y_va, weight_tr))
@@ -82,7 +82,7 @@ def fit_and_predict_test(
     tr_used, weight, trend = _training_data(train)
     models: list[Model] = []
     for model, cv in zip(_new_models(model_classes), cv_models, strict=True):
-        x, y, weight_used = _rows(
+        x, y, weight_used = _apply_subset(
             model,
             tr_used[features],
             target.to_target(tr_used, trend, model.per_area),
@@ -148,7 +148,7 @@ def _training_data(
     return tr_used, weight, trend
 
 
-def _rows(
+def _apply_subset(
     model: Model, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None]:
     """モデルが学習に使う行（Model.subset）だけに絞る。
