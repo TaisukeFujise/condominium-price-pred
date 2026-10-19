@@ -42,7 +42,7 @@ def fit_and_predict_valid(
         モデルの best_iteration に、early stopping で決まった繰り返しの回数が入る。
     """
     tr_used, weight, trend = _training_data(tr)
-    models: list[Model] = []
+    fold_models: list[Model] = []
     for model in _new_models(model_classes):
         x_tr, y_tr, weight_tr = _apply_subset(
             model,
@@ -53,8 +53,8 @@ def fit_and_predict_valid(
         x_va, y_va, _ = _apply_subset(
             model, va[features], target.to_target(va, trend, model.per_area), None
         )
-        models.append(model.fit_with_validation(x_tr, y_tr, x_va, y_va, weight_tr))
-    return _stack_inputs(models, va, features, trend), models
+        fold_models.append(model.fit_with_validation(x_tr, y_tr, x_va, y_va, weight_tr))
+    return _stack_inputs(fold_models, va, features, trend), fold_models
 
 
 def fit_and_predict_test(
@@ -79,22 +79,25 @@ def fit_and_predict_test(
     Returns:
         test の予測価格（円）と、学習済みのモデル。
     """
-    tr_used, weight, trend = _training_data(train)
-    models: list[Model] = []
+    train_used, weight, trend = _training_data(train)
+    test_models: list[Model] = []
     for model, cv in zip(_new_models(model_classes), cv_models, strict=True):
-        x, y, weight_used = _apply_subset(
+        x_train, y_train, weight_train = _apply_subset(
             model,
-            tr_used[features],
-            target.to_target(tr_used, trend, model.per_area),
+            train_used[features],
+            target.to_target(train_used, trend, model.per_area),
             weight,
         )
-        models.append(model.fit(x, y, weight_used, cv))
-    inputs = _stack_inputs(models, test, features, trend)
-    return blend_and_adjust(inputs, stacker, test, train, features), models
+        test_models.append(model.fit(x_train, y_train, weight_train, cv))
+    test_stack_inputs = _stack_inputs(test_models, test, features, trend)
+    return (
+        blend_and_adjust(test_stack_inputs, stacker, test, train, features),
+        test_models,
+    )
 
 
 def blend_and_adjust(
-    inputs: pd.DataFrame,
+    stack_inputs: pd.DataFrame,
     stacker: lgb.Booster | None,
     pred_rows: pd.DataFrame,
     tr: pd.DataFrame,
@@ -103,7 +106,7 @@ def blend_and_adjust(
     """モデルごとの予測を 2 段目で混ぜ、後処理をかける（工程 7・8）。
 
     Args:
-        inputs: pred_rows の 2 段目の入力（ensemble.make_inputs）。
+        stack_inputs: pred_rows の 2 段目の入力（ensemble.make_inputs）。
         stacker: 2 段目。None なら混ぜずに、土台（全行で学習したモデルの予測の log の平均）を使う。
         pred_rows: 予測した行。
         tr: 学習データ（CV では fold の学習データ）。学習に使う行を選んで（selection.select）から後処理に渡す。
@@ -113,7 +116,7 @@ def blend_and_adjust(
         pred_rows の予測価格（円）。
     """
     tr_used, _ = selection.select(tr)
-    price = ensemble.blend(inputs, stacker)
+    price = ensemble.blend(stack_inputs, stacker)
     return postprocess.adjust(price, pred_rows, tr_used, features)
 
 
