@@ -145,8 +145,9 @@ def _cross_validate(
         2 段目の入力と正解は、本番の 2 段目の学習データになる。
     """
     folds = validation.time_series_folds(train)
-    cv_stack_inputs, cv_true_prices = [], []
-    cv_models = [[] for _ in MODELS]
+    cv_stack_inputs: list[pd.DataFrame] = []
+    cv_true_prices: list[np.ndarray] = []
+    cv_models: list[list[Model]] = [[] for _ in MODELS]
     for tr_pos, va_pos in folds:
         tr, va = train.iloc[tr_pos], train.iloc[va_pos]
         va_stack_inputs, fold_models = pipeline.fit_and_predict_valid(
@@ -157,7 +158,9 @@ def _cross_validate(
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
 
-    scores, base_scores, stack_gains = [], [], []
+    scores: list[float] = []
+    base_scores: list[float] = []
+    stack_gains: list[float] = []
     for fold, (tr_pos, va_pos) in enumerate(folds):
         tr, va = train.iloc[tr_pos], train.iloc[va_pos]
         # 本番の 2 段目は test より前の期間の予測しか見られないので、CV でも後の期間の fold は使わない。
