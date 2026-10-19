@@ -55,8 +55,6 @@ class LGBM(Model):
         Returns:
             学習済みのモデル（自分自身）。
         """
-        x_train, y_train, weight = self._rows(x_train, y_train, weight)
-        x_valid, y_valid, _ = self._rows(x_valid, y_valid, None)
         self.features = list(x_train.columns)
         self.booster = lgb.train(
             self.params,
@@ -87,7 +85,6 @@ class LGBM(Model):
         """
         # fold ごとに学習データの量が違うので、1 つの fold に合わせず平均を使う
         num_boost_round = round(np.mean([m.best_iteration for m in cv_models]))
-        x, y, weight = self._rows(x, y, weight)
         self.features = list(x.columns)
         self.booster = lgb.train(
             self.params,
@@ -125,24 +122,6 @@ class LGBM(Model):
             index=self.features,
         )
         return (gain / gain.sum()).sort_values(ascending=False)
-
-    def _rows(
-        self, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
-    ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None]:
-        """学習に使う行（subset）だけに絞る。
-
-        Args:
-            x: 特徴量。
-            y: 目的変数。
-            weight: 行ごとの重み。None なら全行同じ重み。
-
-        Returns:
-            絞った特徴量・目的変数・重み。subset が None ならそのまま。
-        """
-        if self.subset is None:
-            return x, y, weight
-        rows = self.subset(x)
-        return x[rows], y[rows], None if weight is None else weight[rows]
 
     def _trained_booster(self) -> lgb.Booster:
         """学習済みの booster を返す。
