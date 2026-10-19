@@ -39,7 +39,7 @@
   - 「その」「ここ」「両方」で済ませず、指す先を名前で書く
   - 書き足すときは末尾に足さず、段落を組み直す
 - コメントは、コードを読んでも分からない理由（なぜそうするか）だけを書く。例外として、実験のたびに書き足す場所（`main.py` の `MODELS`、`src/features/build.py` の `MAKERS`）には、足し方を書いてよい（初めて触る人が迷わないように）
-- ファイルの外から呼ばない関数は、名前を `_` で始める（例：`main.py` の `_cross_validate`、`src/pipeline.py` の `_training_data`）。外から呼ぶ関数だけを見れば、そのファイルの使い方が分かるようにするため
+- ファイルの外から呼ばない関数は、名前を `_` で始める（例：`main.py` の `_cross_val_predict`、`src/pipeline.py` の `_training_data`）。外から呼ぶ関数だけを見れば、そのファイルの使い方が分かるようにするため
 - データの変数名をそろえる。`train` / `test` はコンペのデータ全体（index は 0 からの連番）だけに使う。fold の学習データ・検証データは `tr` / `va`、その行番号は `tr_pos` / `va_pos`（position。`.iloc` で引く位置）、予測する行は `pred_rows`
 - `time_series_folds` が返すのは 0 始まりの行番号の配列で、index のラベルではない。表から引くときは `.loc` ではなく `.iloc` を使う
 - コードを変えたら `uv run ruff format .`・`uv run ruff check --fix .`・`uv run mypy` を実行し、指摘がない状態にする

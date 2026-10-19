@@ -72,7 +72,8 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    cv_models, cv_stack_inputs, cv_true_prices = _cross_validate(train, features)
+    cv_models, cv_stack_inputs, cv_true_prices = _cross_val_predict(train, features)
+    _print_cv_scores(train, features, cv_models, cv_stack_inputs, cv_true_prices)
 
     # 本番：2 段目を全 fold の予測で学習し、全データで学習し直したモデルの test の予測を混ぜる
     stacker = ensemble.fit_stacker(cv_stack_inputs, cv_true_prices)
@@ -83,25 +84,19 @@ def main() -> None:
     _save_submission(test, price)
 
 
-def _cross_validate(
+def _cross_val_predict(
     train: pd.DataFrame, features: list[str]
 ) -> tuple[list[list[Model]], list[pd.DataFrame], list[np.ndarray]]:
-    """時系列 CV で学習・検証し、fold ごとの RMSLE と平均を表示する。
+    """時系列 CV の fold ごとに、各モデル（MODELS）を学習データで学習し、検証データを予測する。
 
-    処理は 2 つのループに分かれる。
-    1. fold ごとに、各モデル（MODELS）を学習データで学習し、検証データを予測する。
-    2. fold ごとに、2 段目（予測の混ぜ方。src/ensemble.py）を学習し、検証データのスコアを測る。
-
-    2 段目の学習には、スコアを測る fold より前の期間の fold の予測だけを使う。
-    スコアを測る fold の正解で学習すると、答えを見て混ぜ方を決めることになり、CV が良く見えすぎるため。
-    いちばん前の期間の fold には、それより前の fold がないので、2 段目を使わずに測る。
+    戻り値は、本番の学習の材料になる。RMSLE は計算しない（_print_cv_scores で計算する）。
 
     Args:
         train: コンペの学習データ全体。
         features: モデルに入れる列名の一覧。
 
     Returns:
-        次の 3 つ。2 段目の入力と正解は、本番の 2 段目の学習データになる。
+        次の 3 つ。2 段目の入力と正解は、本番の 2 段目（src/ensemble.py）の学習データになる。
         - モデル：[i][fold] は MODELS[i] をその fold で学習したもの。本番の木の本数などを決めるのに使う。
         - 2 段目の入力：fold ごとの、検証データに対する各モデルの予測。
         - 正解：fold ごとの、検証データの価格（円）。
@@ -119,7 +114,32 @@ def _cross_validate(
         cv_true_prices.append(va[TARGET].to_numpy())
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
+    return cv_models, cv_stack_inputs, cv_true_prices
 
+
+def _print_cv_scores(
+    train: pd.DataFrame,
+    features: list[str],
+    cv_models: list[list[Model]],
+    cv_stack_inputs: list[pd.DataFrame],
+    cv_true_prices: list[np.ndarray],
+) -> None:
+    """fold ごとに 2 段目を学習して検証データの RMSLE を計算し、fold ごとの値と平均を表示する。
+
+    表示するだけで、本番には何も渡さない。
+
+    2 段目の学習には、RMSLE を計算する fold より前の期間の fold の予測だけを使う。
+    RMSLE を計算する fold の正解で学習すると、答えを見て混ぜ方を決めることになり、CV が良く見えすぎるため。
+    いちばん前の期間の fold には、それより前の fold がないので、2 段目を使わずに計算する。
+
+    Args:
+        train: コンペの学習データ全体。
+        features: モデルに入れる列名の一覧。
+        cv_models: _cross_val_predict で学習したモデル。表示する best_iteration を取り出す。
+        cv_stack_inputs: _cross_val_predict で作った、fold ごとの 2 段目の入力。
+        cv_true_prices: _cross_val_predict で作った、fold ごとの正解の価格（円）。
+    """
+    folds = validation.time_series_folds(train)
     scores: list[float] = []
     base_scores: list[float] = []
     stack_gains: list[float] = []
@@ -162,7 +182,6 @@ def _cross_validate(
         f"2 段目の効果（2 段目がある {len(stack_gains)} fold の、2 段目あり − なしの平均）: "
         f"{np.mean(stack_gains):+.5f}"
     )
-    return cv_models, cv_stack_inputs, cv_true_prices
 
 
 def _print_importance(test_models: list[Model]) -> None:

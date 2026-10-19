@@ -11,7 +11,7 @@
 土台の値そのものは 2 段目に入れない（予測の高さごとの補正になり、Public LB で悪くなった isotonic 較正と同じ種類のため。#67）。
 
 2 段目は正解の価格から学習するので、学習に使った行で測ると CV が良く見えすぎる。
-CV で 2 段目をどの fold で学習するかは、main.py の _cross_validate に書いた。
+CV で 2 段目をどの fold で学習するかは、main.py の _print_cv_scores に書いた。
 """
 
 import lightgbm as lgb
