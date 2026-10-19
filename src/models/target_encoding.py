@@ -131,7 +131,9 @@ def _keys(x: pd.DataFrame, columns: list[str]) -> np.ndarray:
     return key.to_numpy()
 
 
-def _fit_tables(x: pd.DataFrame, y: pd.Series) -> tuple[dict[str, pd.DataFrame], float]:
+def _fit_tables(
+    x: pd.DataFrame, y: pd.Series | np.ndarray
+) -> tuple[dict[str, pd.DataFrame], float]:
     """単位ごとに、目的変数の合計と件数を数える。
 
     Args:
@@ -141,14 +143,14 @@ def _fit_tables(x: pd.DataFrame, y: pd.Series) -> tuple[dict[str, pd.DataFrame],
     Returns:
         単位の名前 → 単位の文字列ごとの合計（sum）と件数（count）の表、と全体の平均。
     """
-    y = np.asarray(y)
+    y_array = np.asarray(y)
     tables = {
-        name: pd.DataFrame({"key": _keys(x, columns), "y": y})
+        name: pd.DataFrame({"key": _keys(x, columns), "y": y_array})
         .groupby("key")["y"]
         .agg(["sum", "count"])
         for name, columns in UNITS.items()
     }
-    return tables, float(y.mean())
+    return tables, float(y_array.mean())
 
 
 def _add(
@@ -184,10 +186,10 @@ def _add_out_of_fold(x: pd.DataFrame, y: pd.Series) -> pd.DataFrame:
     Returns:
         列を足した特徴量。
     """
-    y = np.asarray(y)
+    y_array = np.asarray(y)
     parts = []
     for rest, part in KFold(_N_SPLITS, shuffle=True, random_state=SEED).split(x):
-        tables, prior = _fit_tables(x.iloc[rest], y[rest])
+        tables, prior = _fit_tables(x.iloc[rest], y_array[rest])
         parts.append(_add(x.iloc[part], tables, prior))
     # KFold は行を並べ替えるので、元の順に戻す
     return pd.concat(parts).loc[x.index]

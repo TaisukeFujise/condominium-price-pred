@@ -87,7 +87,7 @@ def blend(inputs: pd.DataFrame, stacker: lgb.Booster | None) -> np.ndarray:
     x, base = _split(inputs)
     if stacker is None:
         return np.expm1(base)
-    correction = stacker.predict(x)
+    correction = np.asarray(stacker.predict(x))
     # 2 段目がほかの fold から学んだ水準のずれは、fold ごとに向きが違い当てにならない（#67 の表）。
     # 予測する行の補正の平均を引くと 3 fold すべてで良くなった（#73）。正解は使わない
     return np.expm1(base + correction - correction.mean())
