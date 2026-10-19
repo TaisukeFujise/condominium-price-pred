@@ -1,12 +1,17 @@
-"""アンサンブル。複数モデルの予測（円）を、2 段目の LightGBM で混ぜる（stacking）。
+"""アンサンブル（工程 7）。複数モデルの予測（円）を、2 段目の LightGBM で混ぜる（stacking）。
 
-土台は、全行で学習したモデルの予測の log の平均。2 段目は、土台からのずれ（log）を
-各モデルの予測と土台との差・面積・築年数・市区町村の価格帯などから予測する。
-一部の行だけで学習したモデル（Model.subset）は単独では弱く、平均に入れると悪くなるので、2 段目の入力にだけ使う。
-土台の値そのものは 2 段目に入れない。入れると CV はさらに良くなるが、それは予測の高さごとの補正で、
-CV では良くなり Public LB では悪くなった isotonic 較正（src/postprocess.py）と同じ種類の補正だから。
-2 段目は価格（答え）から学習するので、学習に使った行のスコアは良く見えすぎる。
-CV では、ある fold の 2 段目はそれより前の期間の fold の予測だけで学習する（main.py の _cross_validate）。
+混ぜた予測は「土台 + 2 段目の予測」で、どちらも log で表す。
+- 土台：全行で学習したモデル（Model.subset が None）の予測の、log の平均。
+- 2 段目：土台からのずれを予測する LightGBM。入力は、各モデルの予測と土台との差・面積・築年数・
+  学習期間の何四半期先か・市区町村の価格帯・価格情報区分。
+
+一部の行だけで学習したモデル（Model.subset あり）は、土台の平均に入れず、2 段目の入力にだけ使う。
+学習に使っていない行の予測が弱く、平均に入れると悪くなるため。
+
+土台の値そのものは 2 段目に入れない（予測の高さごとの補正になり、Public LB で悪くなった isotonic 較正と同じ種類のため。#67）。
+
+2 段目は正解の価格から学習するので、学習に使った行で測ると CV が良く見えすぎる。
+CV で 2 段目をどの fold で学習するかは、main.py の _cross_validate に書いた。
 """
 
 import lightgbm as lgb
@@ -32,7 +37,7 @@ def make_inputs(
         preds: pred_rows のモデルごとの予測価格（円）。
         in_base: モデルごとに、土台の平均に入れるか（全行で学習したモデルなら True）。
         pred_rows: 予測する行。
-        trend: その予測に使った相場の指数。市区町村の価格帯と学習期間の最後の四半期を引く。
+        trend: preds を円に戻すのに使った相場の指数。市区町村の価格帯と、学習期間の最後の四半期をここから引く。
 
     Returns:
         2 段目の入力。BASE 列は土台（log）で、2 段目の特徴量には入れない。
@@ -56,7 +61,7 @@ def make_inputs(
 def fit_stacker(
     cv_stack_inputs: list[pd.DataFrame], cv_true_prices: list[np.ndarray]
 ) -> lgb.Booster:
-    """渡した fold の予測から、土台からのずれ（log）を予測する 2 段目を学習する。
+    """渡した fold の検証データの予測から、土台からのずれ（log）を予測する 2 段目を学習する。
 
     Args:
         cv_stack_inputs: fold ごとの、make_inputs で作った検証データの入力。
@@ -73,7 +78,7 @@ def fit_stacker(
 
 
 def blend(inputs: pd.DataFrame, stacker: lgb.Booster | None) -> np.ndarray:
-    """2 段目で混ぜた予測を返す。
+    """make_inputs で作った入力を、2 段目で混ぜた予測（円）にする。
 
     Args:
         inputs: make_inputs で作った入力。

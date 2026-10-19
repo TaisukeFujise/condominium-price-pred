@@ -1,9 +1,10 @@
-"""学習から提出ファイルの作成までの流れ。各工程の中身は src/ にある。
+"""前処理から提出ファイルの作成までを、工程の順に呼ぶ。
 
-工程 3〜8（学習データの選択から後処理まで）のつなぎ方は src/pipeline.py。
+各工程の中身は src/ にある。工程の番号と一覧は docs/workflow.md。
+工程 3〜8（学習データの選択から後処理まで）は fold ごとに動くので、src/pipeline.py がまとめて呼ぶ。
 
-精度改善は、該当する工程のファイルを直してこのファイルを実行し、
-CV が良くなったら PR を出す（docs/experiment-guide.md）。
+精度を改善するときは、工程のファイルを直してこのファイルを実行し、CV が良くなったら PR を出す
+（docs/experiment-guide.md）。
 
 実行: uv run python main.py
 """
@@ -85,20 +86,25 @@ def main() -> None:
 def _cross_validate(
     train: pd.DataFrame, features: list[str]
 ) -> tuple[list[list[Model]], list[pd.DataFrame], list[np.ndarray]]:
-    """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
+    """時系列 CV で学習・検証し、fold ごとの RMSLE と平均を表示する。
 
-    2 段目（混ぜ方）を検証データの答えで学習すると CV が良く見えすぎるので、
-    ある fold の 2 段目は、それより前の期間の fold の予測だけで学習してから、その fold のスコアを測る。
-    いちばん前の期間の fold には学習に使える fold がないので、2 段目なし（土台のまま）で測る。
+    処理は 2 つのループに分かれる。
+    1. fold ごとに、各モデル（MODELS）を学習データで学習し、検証データを予測する。
+    2. fold ごとに、2 段目（予測の混ぜ方。src/ensemble.py）を学習し、検証データのスコアを測る。
+
+    2 段目の学習には、スコアを測る fold より前の期間の fold の予測だけを使う。
+    スコアを測る fold の正解で学習すると、答えを見て混ぜ方を決めることになり、CV が良く見えすぎるため。
+    いちばん前の期間の fold には、それより前の fold がないので、2 段目を使わずに測る。
 
     Args:
         train: コンペの学習データ全体。
         features: モデルに入れる列名の一覧。
 
     Returns:
-        fold ごとに学習したモデル、fold ごとの検証データの 2 段目の入力、その正解の価格（円）。
-        モデルの [i] は MODELS[i] を fold ごとに学習したもの。本番の木の本数などを決めるのに使う。
-        2 段目の入力と正解は、本番の 2 段目の学習データになる。
+        次の 3 つ。2 段目の入力と正解は、本番の 2 段目の学習データになる。
+        - モデル：[i][fold] は MODELS[i] をその fold で学習したもの。本番の木の本数などを決めるのに使う。
+        - 2 段目の入力：fold ごとの、検証データに対する各モデルの予測。
+        - 正解：fold ごとの、検証データの価格（円）。
     """
     folds = validation.time_series_folds(train)
     cv_stack_inputs: list[pd.DataFrame] = []

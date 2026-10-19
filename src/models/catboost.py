@@ -25,7 +25,7 @@ class CatBoost(Model):
         Args:
             params: CatBoost のパラメータ。省略すると params.py の CATBOOST_PARAMS。
             per_area: 目的変数を㎡単価にするか（False なら総額）。
-            subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
+            subset: 学習に使う行を選ぶ関数（base.py の Model.subset）。None なら全行。
         """
         # 初期値の CATBOOST_PARAMS は全インスタンスで共有されるので、書き換えが広がらないようコピーする
         self.params = dict(params)
@@ -84,7 +84,7 @@ class CatBoost(Model):
             x: 特徴量。
             y: 目的変数。
             weight: 行ごとの重み。None なら全行同じ重み。
-            cv_models: CV で同じモデルを fold ごとに学習したもの。
+            cv_models: CV で、同じ設定のモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。

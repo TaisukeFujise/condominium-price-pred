@@ -1,9 +1,9 @@
-"""モデルが揃えるメソッドの決まり。src/models/ のモデルは、すべて Model を継承する。
+"""モデルが揃えるメソッドの決まり（Model）と、複数のモデルで使う前処理（fill_missing_category）。
 
-pipeline.py と main.py はこのメソッドだけを使うので、Model を継承したクラスを書けば
+src/models/ のモデルは、すべて Model を継承する。
+pipeline.py と main.py は Model のメソッドだけを使うので、Model を継承したクラスを書けば、
 main.py の MODELS に足すだけでモデルを足したり付け替えたりできる（例は lgbm.py）。
 メソッドが 1 つでも足りないと、インスタンスを作った時点でエラーになる。
-複数のモデルで同じ前処理（fill_missing_category）もここに置く。
 """
 
 from abc import ABC, abstractmethod
@@ -19,9 +19,9 @@ class Model(ABC):
 
     Attributes:
         per_area: 目的変数を㎡単価にするか（False なら総額）。src/target.py の to_target に渡す。
-        subset: 学習に使う行を絞る条件（特徴量の表 → 行ごとの True / False）。None なら全行で学習する。
-            行を絞るのは src/pipeline.py なので、モデルの側では何もしなくてよい。
-            絞ったモデルも予測は全行に出すが、平均の土台には入れず、src/ensemble.py の 2 段目の入力にだけ使う。
+        subset: 学習に使う行を選ぶ関数（特徴量の表を受け取り、行ごとの True / False を返す）。
+            None なら全行で学習する。行を選ぶのは src/pipeline.py なので、モデルの側では何もしなくてよい。
+            予測は全行に出す。その予測は、src/ensemble.py の土台の平均には入れず、2 段目の入力にだけ使う。
     """
 
     per_area: bool = True
@@ -57,15 +57,15 @@ class Model(ABC):
         weight: pd.Series | None,
         cv_models: list[Self],
     ) -> Self:
-        """本番用に学習する。検証データがないので、繰り返しの回数などは CV の結果から決める。
+        """本番用に学習する。検証データがないので、繰り返しの回数などは cv_models から決める。
 
-        決め方はモデルによって違うので、各モデルの fit に書く（LightGBM は fold の平均）。
+        決め方はモデルごとに、各モデルの fit に書く（LightGBM は fold ごとの best_iteration の平均）。
 
         Args:
             x: 特徴量。
             y: 目的変数。
             weight: 行ごとの重み。None なら全行同じ重み。
-            cv_models: CV で同じモデルを fold ごとに学習したもの。
+            cv_models: CV で、同じ設定のモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。

@@ -1,8 +1,8 @@
-"""線形回帰（Ridge）で粗く当て、残差を LightGBM で学習するモデル。
+"""線形回帰（Ridge）で粗く当て、その残差を LightGBM で学習するモデル。
 
-GBDT 同士（LightGBM・CatBoost）は残差相関が 0.9 超えになりやすく、混ぜても伸びにくい
-（Issue #38）。線形回帰は GBDT と間違え方の系統が違うので、MLP のような前処理コスト
-（標準化・カテゴリの埋め込み・欠損処理を一から作る）をかけずに安く多様性を作れる。
+アンサンブルに、GBDT（LightGBM・CatBoost）と間違え方の違うモデルを足すために使う。
+GBDT 同士は残差の相関が 0.9 を超えやすく、混ぜても伸びにくい（Issue #38）。
+線形回帰を選んだのは、MLP と違い、標準化・カテゴリの埋め込み・欠損処理を一から作らずに足せるため。
 """
 
 from collections.abc import Callable
@@ -42,7 +42,7 @@ class LinearResidual(Model):
             params: 残差側 LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
             per_area: 目的変数を㎡単価にするか（False なら総額）。
             alpha: Ridge の正則化の強さ。
-            subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
+            subset: 学習に使う行を選ぶ関数（base.py の Model.subset）。None なら全行。
         """
         self.params = dict(params)
         self.per_area = per_area
@@ -99,7 +99,7 @@ class LinearResidual(Model):
             x: 特徴量。
             y: 目的変数。
             weight: 行ごとの重み。None なら全行同じ重み。
-            cv_models: CV で同じモデルを fold ごとに学習したもの。
+            cv_models: CV で、同じ設定のモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。
@@ -161,7 +161,7 @@ class LinearResidual(Model):
         y_valid: pd.Series,
         weight: pd.Series | None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """線形回帰を学習し、train・valid の残差（目的変数 − 線形回帰の予測）を返す。
+        """線形回帰を学習し、学習データと検証データの残差（目的変数 − 線形回帰の予測）を返す。
 
         Args:
             x_train: 学習データの特徴量。
@@ -232,7 +232,7 @@ def _linear_columns(x: pd.DataFrame) -> list[str]:
 
 
 def _build_linear(x: pd.DataFrame, alpha: float) -> Pipeline:
-    """数値列は欠損埋め+標準化、カテゴリ列は one-hot にして Ridge へつなぐ。
+    """数値列は欠損を中央値で埋めて標準化し、カテゴリ列は one-hot にして、Ridge につなぐ。
 
     Args:
         x: 線形回帰に使う列の特徴量。列の型で数値列とカテゴリ列を分ける。
