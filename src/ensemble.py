@@ -8,7 +8,7 @@
 CV では良くなり Public LB では悪くなった isotonic 較正（src/postprocess.py）と同じ種類の補正だから。
 同じ理由で、2 段目には全体の水準も動かさせない（blend で補正の平均を引く）。水準は相場の指数（src/target.py）が決める。
 2 段目は価格（答え）から学習するので、学習に使った行のスコアは良く見えすぎる。
-CV では、ある fold の 2 段目は残りの fold の予測だけで学習する（main.py の _cross_validate）。
+CV では、ある fold の 2 段目はそれより前の期間の fold の予測だけで学習する（main.py の _cross_validate）。
 """
 
 import lightgbm as lgb
@@ -56,19 +56,19 @@ def make_inputs(
 
 
 def fit_stacker(
-    fold_inputs: list[pd.DataFrame], fold_prices: list[np.ndarray]
+    cv_stack_inputs: list[pd.DataFrame], cv_true_prices: list[np.ndarray]
 ) -> lgb.Booster:
     """渡した fold の予測から、土台からのずれ（log）を予測する 2 段目を学習する。
 
     Args:
-        fold_inputs: fold ごとの、make_inputs で作った検証データの入力。
-        fold_prices: fold ごとの、検証データの正解の価格（円）。
+        cv_stack_inputs: fold ごとの、make_inputs で作った検証データの入力。
+        cv_true_prices: fold ごとの、検証データの正解の価格（円）。
 
     Returns:
         学習済みの 2 段目。
     """
-    x, base = _split(pd.concat(fold_inputs, ignore_index=True))
-    log_true = np.log1p(np.concatenate(fold_prices))
+    x, base = _split(pd.concat(cv_stack_inputs, ignore_index=True))
+    log_true = np.log1p(np.concatenate(cv_true_prices))
     # 土台を初期値にして、ずれだけを木に学習させる
     dataset = lgb.Dataset(x, log_true, init_score=base, categorical_feature=CATEGORIES)
     return lgb.train(STACK_PARAMS, dataset, STACK_ROUNDS)
