@@ -74,14 +74,13 @@ class LinearResidual(Model):
             学習済みのモデル（自分自身）。
         """
         self.features = list(x_train.columns)
-        resid_train, resid_valid = self._fit_linear(
-            x_train, y_train, x_valid, y_valid, weight
-        )
+        resid_train = self._fit_linear(x_train, y_train, weight)
+        resid_valid = y_valid - self._predict_linear(x_valid)
         self.booster = lgb.train(
             self.params,
-            lgb.Dataset(x_train[self.features], resid_train, weight=weight),
+            lgb.Dataset(x_train, resid_train, weight=weight),
             num_boost_round=10000,
-            valid_sets=[lgb.Dataset(x_valid[self.features], resid_valid)],
+            valid_sets=[lgb.Dataset(x_valid, resid_valid)],
             callbacks=[lgb.early_stopping(100, verbose=False)],
         )
         return self
@@ -105,16 +104,11 @@ class LinearResidual(Model):
             学習済みのモデル（自分自身）。
         """
         self.features = list(x.columns)
-        self._linear_cols = _linear_columns(x)
-        self._linear = _build_linear(x[self._linear_cols], self.alpha)
-        self._linear.fit(
-            fill_missing_category(x[self._linear_cols]), y, ridge__sample_weight=weight
-        )
-        resid = y - self._linear.predict(fill_missing_category(x[self._linear_cols]))
+        resid = self._fit_linear(x, y, weight)
         num_boost_round = round(np.mean([m.best_iteration for m in cv_models]))
         self.booster = lgb.train(
             self.params,
-            lgb.Dataset(x[self.features], resid, weight=weight),
+            lgb.Dataset(x, resid, weight=weight),
             num_boost_round=num_boost_round,
         )
         return self
@@ -131,10 +125,7 @@ class LinearResidual(Model):
         resid_pred = self._trained_booster().predict(
             x[self.features], num_iteration=self.best_iteration
         )
-        linear_pred = self._trained_linear().predict(
-            fill_missing_category(x[self._linear_cols])
-        )
-        return linear_pred + resid_pred
+        return self._predict_linear(x) + resid_pred
 
     @property
     def best_iteration(self) -> int | None:
@@ -154,39 +145,37 @@ class LinearResidual(Model):
         return (gain / gain.sum()).sort_values(ascending=False)
 
     def _fit_linear(
-        self,
-        x_train: pd.DataFrame,
-        y_train: pd.Series,
-        x_valid: pd.DataFrame,
-        y_valid: pd.Series,
-        weight: pd.Series | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """線形回帰を学習し、学習データと検証データの残差（目的変数 − 線形回帰の予測）を返す。
+        self, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
+    ) -> pd.Series:
+        """線形回帰を学習し、学習データの残差（目的変数 − 線形回帰の予測）を返す。
 
         Args:
-            x_train: 学習データの特徴量。
-            y_train: 学習データの目的変数。
-            x_valid: 検証データの特徴量。
-            y_valid: 検証データの目的変数。
+            x: 学習データの特徴量。
+            y: 学習データの目的変数。
             weight: 学習データの行ごとの重み。None なら全行同じ重み。
 
         Returns:
-            学習データの残差と、検証データの残差。
+            学習データの残差。
         """
-        self._linear_cols = _linear_columns(x_train)
-        self._linear = _build_linear(x_train[self._linear_cols], self.alpha)
+        self._linear_cols = _linear_columns(x)
+        self._linear = _build_linear(x[self._linear_cols], self.alpha)
         self._linear.fit(
-            fill_missing_category(x_train[self._linear_cols]),
-            y_train,
-            ridge__sample_weight=weight,
+            fill_missing_category(x[self._linear_cols]), y, ridge__sample_weight=weight
         )
-        resid_train = y_train - self._linear.predict(
-            fill_missing_category(x_train[self._linear_cols])
+        return y - self._predict_linear(x)
+
+    def _predict_linear(self, x: pd.DataFrame) -> np.ndarray:
+        """学習済みの線形回帰で予測する。
+
+        Args:
+            x: 特徴量。
+
+        Returns:
+            線形回帰の予測。
+        """
+        return self._trained_linear().predict(
+            fill_missing_category(x[self._linear_cols])
         )
-        resid_valid = y_valid - self._linear.predict(
-            fill_missing_category(x_valid[self._linear_cols])
-        )
-        return resid_train, resid_valid
 
     def _trained_booster(self) -> lgb.Booster:
         """学習済みの booster を返す。
