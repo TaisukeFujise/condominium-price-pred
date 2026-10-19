@@ -44,18 +44,22 @@ def make_inputs(
     """
     log_preds = np.log1p(np.array(preds))
     base = log_preds[np.array(in_base)].mean(axis=0)
-    inputs = pd.DataFrame(
+    stack_inputs = pd.DataFrame(
         {f"差{i}": log_pred - base for i, log_pred in enumerate(log_preds)}
     )
-    inputs["面積"] = pred_rows["面積_数値"].to_numpy()
-    inputs["築年数"] = pred_rows["築年数"].to_numpy()
+    stack_inputs["面積"] = pred_rows["面積_数値"].to_numpy()
+    stack_inputs["築年数"] = pred_rows["築年数"].to_numpy()
     # 学習期間の何四半期先か。test も CV の検証データも 1〜3 になる
-    inputs["先の四半期数"] = (pred_rows[target.QUARTER] - trend.last_quarter).to_numpy()
+    stack_inputs["先の四半期数"] = (
+        pred_rows[target.QUARTER] - trend.last_quarter
+    ).to_numpy()
     city = pred_rows["市区町村名"].astype(object)
-    inputs["価格帯"] = city.map(trend.city_group).fillna("0").astype(int).to_numpy()
-    inputs["価格情報区分"] = pred_rows["価格情報区分"].cat.codes.to_numpy()
-    inputs[BASE] = base
-    return inputs
+    stack_inputs["価格帯"] = (
+        city.map(trend.city_group).fillna("0").astype(int).to_numpy()
+    )
+    stack_inputs["価格情報区分"] = pred_rows["価格情報区分"].cat.codes.to_numpy()
+    stack_inputs[BASE] = base
+    return stack_inputs
 
 
 def fit_stacker(
@@ -77,29 +81,29 @@ def fit_stacker(
     return lgb.train(STACK_PARAMS, dataset, STACK_ROUNDS)
 
 
-def blend(inputs: pd.DataFrame, stacker: lgb.Booster | None) -> np.ndarray:
+def blend(stack_inputs: pd.DataFrame, stacker: lgb.Booster | None) -> np.ndarray:
     """make_inputs で作った入力を、2 段目で混ぜた予測（円）にする。
 
     Args:
-        inputs: make_inputs で作った入力。
+        stack_inputs: make_inputs で作った入力。
         stacker: 学習済みの 2 段目。None なら土台（log の平均）をそのまま使う。
 
     Returns:
         混ぜた予測（円）。
     """
-    x, base = _split(inputs)
+    x, base = _split(stack_inputs)
     if stacker is None:
         return np.expm1(base)
     return np.expm1(base + stacker.predict(x))
 
 
-def _split(inputs: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
+def _split(stack_inputs: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
     """入力を、2 段目の特徴量と土台（log）に分ける。
 
     Args:
-        inputs: make_inputs で作った入力。
+        stack_inputs: make_inputs で作った入力。
 
     Returns:
         2 段目の特徴量と、土台（log）。
     """
-    return inputs.drop(columns=BASE), inputs[BASE].to_numpy()
+    return stack_inputs.drop(columns=BASE), stack_inputs[BASE].to_numpy()
