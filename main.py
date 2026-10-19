@@ -25,6 +25,9 @@ from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
 from src.models.target_encoding import TargetEncodedLGBM
 
+# Issue #80 の確認用（駅・駅×建築年の単位を足した target encoding）
+from f80.te import STATION_UNITS, ParamTE
+
 
 def _built_over_30(x: pd.DataFrame) -> np.ndarray:
     """築 30 年を超える行を選ぶ。
@@ -104,6 +107,9 @@ MODELS: list[Callable[[], Model]] = [
     partial(LGBM, subset=_outside_23_wards),
     Hedonic,
     TargetEncodedLGBM,
+    # Issue #80：駅入りの単位の TE と、総額の目的変数の TE を 2 段目の入力に足す
+    partial(ParamTE, units=STATION_UNITS),
+    partial(TargetEncodedLGBM, per_area=False),
 ]
 
 
