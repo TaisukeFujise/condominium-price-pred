@@ -38,7 +38,7 @@ def fit_and_predict_valid(
         va の 2 段目の入力（ensemble.make_inputs）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
     """
     tr_used, weight, trend = _training_data(tr)
-    models = []
+    models: list[Model] = []
     for model in _new_models(model_classes):
         x_tr, y_tr, weight_tr = _rows(
             model,
@@ -76,7 +76,7 @@ def fit_and_predict_test(
         test の予測価格（円）と、学習済みのモデル。
     """
     tr_used, weight, trend = _training_data(train)
-    models = []
+    models: list[Model] = []
     for model, cv in zip(_new_models(model_classes), cv_models, strict=True):
         x, y, weight_used = _rows(
             model,

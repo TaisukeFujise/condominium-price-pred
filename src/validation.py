@@ -33,7 +33,7 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     """
     quarter = train["経過四半期"]
     last = quarter.max()
-    folds = []
+    folds: list[tuple[np.ndarray, np.ndarray]] = []
     for k in range(N_FOLDS):
         valid_end = last - k * VALID_QUARTERS
         valid_start = valid_end - VALID_QUARTERS + 1
