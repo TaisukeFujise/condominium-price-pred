@@ -39,7 +39,11 @@ def weight_fn(tr: pd.DataFrame) -> pd.Series | None:
 
 selection.select = lambda tr: (tr, weight_fn(tr))
 params = {**LGBM_PARAMS, "num_threads": 4, "seed": seed}
-factory = lambda: LGBM(params)
+
+
+def factory() -> LGBM:
+    return LGBM(params)
+
 
 df = preprocess.load()
 df, features = build_features(df)

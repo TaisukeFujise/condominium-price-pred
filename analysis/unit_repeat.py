@@ -32,8 +32,8 @@ def key(df, cols):
 
 UNITS = {
     "建物": BUILDING_KEYS,
-    "建物+面積": BUILDING_KEYS + ["面積_数値"],
-    "建物+面積+間取り": BUILDING_KEYS + ["面積_数値", "間取り"],
+    "建物+面積": [*BUILDING_KEYS, "面積_数値"],
+    "建物+面積+間取り": [*BUILDING_KEYS, "面積_数値", "間取り"],
 }
 out = []
 for k, (tr_i, va_i) in enumerate(folds):

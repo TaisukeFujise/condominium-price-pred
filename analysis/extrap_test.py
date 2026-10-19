@@ -72,7 +72,7 @@ def new_log_index(t: target.Trend, rows: pd.DataFrame, cfg: dict) -> np.ndarray:
 
 def cv(cfg: dict) -> list[float]:
     inputs, prices = [], []
-    for k, (tr_i, va_i) in enumerate(folds):
+    for k, (_, va_i) in enumerate(folds):
         va = train.iloc[va_i]
         t = trends[k]
         dk = d[d.fold == k]

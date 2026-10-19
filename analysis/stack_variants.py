@@ -62,7 +62,7 @@ def blend_seeds(inputs, boosters):
 
 def cv(preds_fn=None, drop=(), seeds=(42,), label=""):
     inputs, prices = [], []
-    for k, (tr_i, va_i) in enumerate(folds):
+    for k, (_, va_i) in enumerate(folds):
         va = train.iloc[va_i]
         dk = d[d.fold == k]
         preds = [dk[f"pred_{n}"].to_numpy() for n in NAMES]
@@ -74,8 +74,8 @@ def cv(preds_fn=None, drop=(), seeds=(42,), label=""):
         inputs.append(inp)
         prices.append(va[TARGET].to_numpy())
     out = []
-    for k, (tr_i, va_i) in enumerate(folds):
-        tr, va = train.iloc[tr_i], train.iloc[va_i]
+    for k, (_, va_i) in enumerate(folds):
+        va = train.iloc[va_i]
         bs = fit_stacker_seeds(
             [inputs[j] for j in range(3) if j != k],
             [prices[j] for j in range(3) if j != k],

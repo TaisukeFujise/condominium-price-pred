@@ -33,7 +33,7 @@ NAMES = [
 ]
 IN_BASE = [True] * 4 + [False] * 7
 inputs, prices = [], []
-for k, (tr_i, va_i) in enumerate(folds):
+for k, (_, va_i) in enumerate(folds):
     va = train.iloc[va_i]
     dk = d[d.fold == k]
     inputs.append(
