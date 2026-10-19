@@ -54,19 +54,19 @@ def make_inputs(
 
 
 def fit_stacker(
-    fold_inputs: list[pd.DataFrame], fold_prices: list[np.ndarray]
+    cv_stack_inputs: list[pd.DataFrame], cv_true_prices: list[np.ndarray]
 ) -> lgb.Booster:
     """渡した fold の予測から、土台からのずれ（log）を予測する 2 段目を学習する。
 
     Args:
-        fold_inputs: fold ごとの、make_inputs で作った検証データの入力。
-        fold_prices: fold ごとの、検証データの正解の価格（円）。
+        cv_stack_inputs: fold ごとの、make_inputs で作った検証データの入力。
+        cv_true_prices: fold ごとの、検証データの正解の価格（円）。
 
     Returns:
         学習済みの 2 段目。
     """
-    x, base = _split(pd.concat(fold_inputs, ignore_index=True))
-    log_true = np.log1p(np.concatenate(fold_prices))
+    x, base = _split(pd.concat(cv_stack_inputs, ignore_index=True))
+    log_true = np.log1p(np.concatenate(cv_true_prices))
     # 土台を初期値にして、ずれだけを木に学習させる
     dataset = lgb.Dataset(x, log_true, init_score=base, categorical_feature=CATEGORIES)
     return lgb.train(STACK_PARAMS, dataset, STACK_ROUNDS)

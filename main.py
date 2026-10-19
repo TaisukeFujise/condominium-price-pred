@@ -11,7 +11,6 @@ CV が良くなったら PR を出す（docs/experiment-guide.md）。
 from collections.abc import Callable
 from functools import partial
 
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
@@ -72,9 +71,10 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    cv_models, stacker = _cross_validate(train, features)
+    cv_models, cv_stack_inputs, cv_true_prices = _cross_validate(train, features)
 
-    # 本番：全データで学習し直して test を予測する
+    # 本番：2 段目を全 fold の予測で学習し、全データで学習し直したモデルの test の予測を混ぜる
+    stacker = ensemble.fit_stacker(cv_stack_inputs, cv_true_prices)
     price, test_models = pipeline.fit_and_predict_test(
         train, test, features, MODELS, cv_models, stacker
     )
@@ -84,7 +84,7 @@ def main() -> None:
 
 def _cross_validate(
     train: pd.DataFrame, features: list[str]
-) -> tuple[list[list[Model]], lgb.Booster]:
+) -> tuple[list[list[Model]], list[pd.DataFrame], list[np.ndarray]]:
     """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
 
     2 段目（混ぜ方）を検証データの答えで学習すると CV が良く見えすぎるので、
@@ -96,48 +96,51 @@ def _cross_validate(
         features: モデルに入れる列名の一覧。
 
     Returns:
-        fold ごとに学習したモデルと、本番で使う 2 段目。
+        fold ごとに学習したモデル、fold ごとの検証データの 2 段目の入力、その正解の価格（円）。
         モデルの [i] は MODELS[i] を fold ごとに学習したもの。本番の木の本数などを決めるのに使う。
-        2 段目は全 fold の予測から学習する。
+        2 段目の入力と正解は、本番の 2 段目の学習データになる。
     """
     folds = validation.time_series_folds(train)
-    fold_inputs, fold_prices = [], []
+    cv_stack_inputs, cv_true_prices = [], []
     cv_models = [[] for _ in MODELS]
-    for tr_index, va_index in folds:
-        tr, va = train.iloc[tr_index], train.iloc[va_index]
-        inputs, fold_models = pipeline.fit_and_predict_valid(tr, va, features, MODELS)
-        fold_inputs.append(inputs)
-        fold_prices.append(va[TARGET].to_numpy())
+    for tr_pos, va_pos in folds:
+        tr, va = train.iloc[tr_pos], train.iloc[va_pos]
+        va_stack_inputs, fold_models = pipeline.fit_and_predict_valid(
+            tr, va, features, MODELS
+        )
+        cv_stack_inputs.append(va_stack_inputs)
+        cv_true_prices.append(va[TARGET].to_numpy())
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
 
     scores, base_scores, stack_gains = [], [], []
-    for fold, (tr_index, va_index) in enumerate(folds):
-        tr, va = train.iloc[tr_index], train.iloc[va_index]
+    for fold, (tr_pos, va_pos) in enumerate(folds):
+        tr, va = train.iloc[tr_pos], train.iloc[va_pos]
         # 本番の 2 段目は test より前の期間の予測しか見られないので、CV でも後の期間の fold は使わない。
         # folds は新しい期間から順に並ぶので、前の期間の fold は番号が大きい方
-        earlier = [k for k in range(len(folds)) if k > fold]
+        earlier_folds = [k for k in range(len(folds)) if k > fold]
         base_price = pipeline.blend_and_adjust(
-            fold_inputs[fold], None, va, tr, features
+            cv_stack_inputs[fold], None, va, tr, features
         )
-        if earlier:
-            stacker = ensemble.fit_stacker(
-                [fold_inputs[k] for k in earlier], [fold_prices[k] for k in earlier]
+        if earlier_folds:
+            fold_stacker = ensemble.fit_stacker(
+                [cv_stack_inputs[k] for k in earlier_folds],
+                [cv_true_prices[k] for k in earlier_folds],
             )
             price = pipeline.blend_and_adjust(
-                fold_inputs[fold], stacker, va, tr, features
+                cv_stack_inputs[fold], fold_stacker, va, tr, features
             )
         else:
             price = base_price
         scores.append(validation.rmsle(va[TARGET], price))
         base_scores.append(validation.rmsle(va[TARGET], base_price))
-        if earlier:
+        if earlier_folds:
             stack_gains.append(scores[-1] - base_scores[-1])
-        best_iterations = [models[fold].best_iteration for models in cv_models]
+        best_iterations = [per_fold[fold].best_iteration for per_fold in cv_models]
         print(
             f"fold {fold}（検証 {validation.describe_period(va)}）: "
             f"RMSLE {scores[-1]:.5f}（2 段目なし {base_scores[-1]:.5f}、"
-            f"2 段目の学習に使った fold {earlier}、"
+            f"2 段目の学習に使った fold {earlier_folds}、"
             f"best_iteration={best_iterations}）"
         )
     print(
@@ -150,7 +153,7 @@ def _cross_validate(
         f"2 段目の効果（2 段目がある {len(stack_gains)} fold の、2 段目あり − なしの平均）: "
         f"{np.mean(stack_gains):+.5f}"
     )
-    return cv_models, ensemble.fit_stacker(fold_inputs, fold_prices)
+    return cv_models, cv_stack_inputs, cv_true_prices
 
 
 def _print_importance(test_models: list[Model]) -> None:
