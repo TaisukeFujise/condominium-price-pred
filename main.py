@@ -111,7 +111,7 @@ def _cross_validate(
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
 
-    scores, base_scores = [], []
+    scores, base_scores, stack_gains = [], [], []
     for fold, (tr_index, va_index) in enumerate(folds):
         tr, va = train.iloc[tr_index], train.iloc[va_index]
         # 本番の 2 段目は test より前の期間の予測しか見られないので、CV でも後の期間の fold は使わない。
@@ -131,6 +131,8 @@ def _cross_validate(
             price = base_price
         scores.append(validation.rmsle(va[TARGET], price))
         base_scores.append(validation.rmsle(va[TARGET], base_price))
+        if earlier:
+            stack_gains.append(scores[-1] - base_scores[-1])
         best_iterations = [models[fold].best_iteration for models in cv_models]
         print(
             f"fold {fold}（検証 {validation.describe_period(va)}）: "
@@ -141,6 +143,12 @@ def _cross_validate(
     print(
         f"CV RMSLE（{validation.N_FOLDS} fold の平均、検証 {validation.VERSION}）: {np.mean(scores):.5f}"
         f"（2 段目なし {np.mean(base_scores):.5f}）"
+    )
+    # 2 段目なしで測る fold があるので、3 fold の平均では 2 段目の効果が薄まる。
+    # 2 段目を変える実験は、2 段目がある fold だけのこの値で比べる
+    print(
+        f"2 段目の効果（2 段目がある {len(stack_gains)} fold の、2 段目あり − なしの平均）: "
+        f"{np.mean(stack_gains):+.5f}"
     )
     return cv_models, ensemble.fit_stacker(fold_inputs, fold_prices)
 
