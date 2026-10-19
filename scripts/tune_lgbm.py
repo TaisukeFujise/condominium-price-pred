@@ -153,7 +153,8 @@ def _objective(
     scores = []
     for fold, (tr_index, va_index) in enumerate(validation.time_series_folds(train)):
         tr, va = train.iloc[tr_index], train.iloc[va_index]
-        price, _ = pipeline.fit_and_predict_valid(tr, va, features, [model_class])
+        inputs, _ = pipeline.fit_and_predict_valid(tr, va, features, [model_class])
+        price = pipeline.blend_and_adjust(inputs, None, va, tr, features)
         scores.append(validation.rmsle(va[TARGET], price))
         # fold ごとに RMSLE の大きさが違うので、途中経過は「ここまでの平均」ではなく fold の値をそのまま比べる
         trial.report(scores[-1], fold)

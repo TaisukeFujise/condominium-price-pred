@@ -51,7 +51,7 @@ def _area_30_or_less(x: pd.DataFrame) -> np.ndarray:
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py の 2 段目で混ぜる（例: [LGBM, CatBoost]）。混ぜ方は CV の予測から自動で学習する
 # 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
-# 一部の行だけで学習するモデルは subset に行を選ぶ関数を渡す（例: partial(LGBM, subset=_built_over_30)）。
+# 一部の行だけで学習するモデルは subset に行を選ぶ関数を渡す（例: partial(LGBM, subset=_built_over_30)。CatBoost なども同じ）。
 # その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ条件には test でも分かる列だけを使う
 MODELS: list[Callable[[], Model]] = [
     LGBM,
@@ -145,8 +145,25 @@ def _print_importance(test_models: list[Model]) -> None:
     for model in test_models:
         importance = model.importance()
         if importance is not None:
-            print(f"特徴量の重要度（{type(model).__name__}）:")
+            print(f"特徴量の重要度（{_describe(model)}）:")
             print(importance.round(3).to_string())
+
+
+def _describe(model: Model) -> str:
+    """同じクラスのモデルを見分けられるよう、クラス名に設定を添えた名前を作る。
+
+    Args:
+        model: モデル。
+
+    Returns:
+        クラス名と、既定から変えた設定（例: LGBM・総額、LGBM・_built_over_30）。
+    """
+    names = [type(model).__name__]
+    if not model.per_area:
+        names.append("総額")
+    if model.subset is not None:
+        names.append(model.subset.__name__)
+    return "・".join(names)
 
 
 def _save_submission(test: pd.DataFrame, price: np.ndarray) -> None:
