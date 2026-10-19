@@ -37,7 +37,8 @@ def make(df: pd.DataFrame) -> pd.DataFrame:
     # 建築年帯は集計のキーにだけ使い、モデルには入れない（建築年_数値から分かる）
     df = df.assign(建築年帯=df["建築年_数値"] // ERA_YEARS * ERA_YEARS)
     for name, keys in GROUP_KEYS.items():
-        # observed=True: カテゴリ型のキーで、出てこない組み合わせまで作らない
+        # カテゴリ型のキーは、データに出てこない組み合わせ（市区町村名 × 地区名で約 6 万通り）まで
+        # グループを作ると遅くなるので、出てくる組み合わせだけにする
         groups = df.groupby(keys, observed=True)
         out[f"{name}_件数"] = groups["id"].transform("size")
         for col in MEAN_COLS:
