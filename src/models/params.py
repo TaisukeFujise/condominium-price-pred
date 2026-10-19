@@ -4,9 +4,11 @@ LightGBM は、特徴量の実験の前に理由のあるものだけ見直し�
 木の形と正則化は Optuna で探した（#40）。
 """
 
+from typing import Any
+
 from src.config import SEED
 
-LGBM_PARAMS = {
+LGBM_PARAMS: dict[str, Any] = {
     # 相場から極端にずれた取引（アンケート側の共有持分・入力ミスなど）に引っ張られないよう、
     # log 空間で 0.2（約 1.2 倍）より大きいずれは二乗ではなく線形にしか効かせない
     "objective": "huber",
@@ -33,7 +35,7 @@ LGBM_PARAMS = {
 }
 
 # 目的変数・損失・評価指標は LGBM_PARAMS とそろえる。学習率と木の形は CatBoost 単体の CV で選んだ
-CATBOOST_PARAMS = {
+CATBOOST_PARAMS: dict[str, Any] = {
     # LGBM_PARAMS の huber（alpha=0.2）と同じ。0.2 より大きいずれは線形にしか効かせない
     "loss_function": "Huber:delta=0.2",
     "eval_metric": "RMSE",
@@ -51,7 +53,7 @@ CATBOOST_PARAMS = {
 }
 
 # ヘドニック回帰（src/models/hedonic.py）。2 段目の入力にだけ使うので、単独の CV では調整していない（#72）
-HEDONIC_PARAMS = {
+HEDONIC_PARAMS: dict[str, Any] = {
     # 地区名（1214 種類）の one-hot が件数の少ない地区に合わせすぎないよう、Ridge で全体の平均に寄せる
     "alpha": 3.0,
     # 3 件未満のカテゴリの値は 1 つにまとめる
@@ -62,7 +64,7 @@ HEDONIC_PARAMS = {
 
 # 2 段目（src/ensemble.py の stacking）。学習できるのは OOF のある数四半期だけなので、
 # 浅い木・葉ごとに多くの行・強い L2 にして合わせすぎを防ぐ
-STACK_PARAMS = {
+STACK_PARAMS: dict[str, Any] = {
     # 1 段目と違い Huber にしない。Huber は残差の中央値に近いものを狙い、安い側に外れる取引のせいで
     # 平均より高めにずらす。RMSLE で一番良いのは平均なので二乗誤差にする（#73。補正の平均を引く
     # ensemble.blend と合わせて CV −0.00066。Huber のまま平均を引くだけでは −0.00046）

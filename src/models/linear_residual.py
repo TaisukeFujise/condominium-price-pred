@@ -131,7 +131,9 @@ class LinearResidual(Model):
         resid_pred = self._trained_booster().predict(
             x[self.features], num_iteration=self.best_iteration
         )
-        linear_pred = self._linear.predict(fill_missing_category(x[self._linear_cols]))
+        linear_pred = self._trained_linear().predict(
+            fill_missing_category(x[self._linear_cols])
+        )
         return linear_pred + resid_pred
 
     @property
@@ -198,6 +200,18 @@ class LinearResidual(Model):
                 "まだ学習していない。先に fit か fit_with_validation を呼ぶ"
             )
         return self.booster
+
+    def _trained_linear(self) -> Pipeline:
+        """学習済みの線形回帰を返す。
+
+        Returns:
+            学習済みの線形回帰。学習前なら ValueError を投げる。
+        """
+        if self._linear is None:
+            raise ValueError(
+                "まだ学習していない。先に fit か fit_with_validation を呼ぶ"
+            )
+        return self._linear
 
 
 def _linear_columns(x: pd.DataFrame) -> list[str]:
