@@ -105,8 +105,9 @@ def fill_missing_category(x: pd.DataFrame) -> pd.DataFrame:
     Returns:
         カテゴリ列を文字列にした特徴量。ほかの列はそのまま。
     """
-    # CatBoost や one-hot はカテゴリ列の欠損を受け取れない。LightGBM も欠損を独立した値として
-    # 分岐するので、扱いがそろう。astype(str) は pandas の版によって欠損を NaN のまま残すので、先に埋める
+    # CatBoost と one-hot（LinearResidual の線形回帰）は、カテゴリ列の欠損を受け取れない。
+    # 欠損を 1 つの値にすると、欠損を独立した値として分岐する LightGBM と扱いがそろう。
+    # pandas の版によっては astype(str) が欠損を NaN のまま残すので、astype(str) の前に埋める。
     cat_columns = x.select_dtypes("category").columns
     return x.assign(
         **{c: x[c].astype(object).fillna("欠損").astype(str) for c in cat_columns}
