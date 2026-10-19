@@ -150,7 +150,7 @@ def _objective(
     params = {**LGBM_PARAMS, **_suggest(trial), "num_threads": num_threads}
     model_class = partial(LGBM, params)
     start = time.time()
-    scores = []
+    scores: list[float] = []
     for fold, (tr_pos, va_pos) in enumerate(validation.time_series_folds(train)):
         tr, va = train.iloc[tr_pos], train.iloc[va_pos]
         va_stack_inputs, _ = pipeline.fit_and_predict_valid(

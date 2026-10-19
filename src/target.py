@@ -82,7 +82,8 @@ def _market_index(tr: pd.DataFrame) -> pd.Series:
     Returns:
         経過四半期ごとの指数（log）。最後の四半期を 0 とする。
     """
-    log_unit = np.log(tr[TARGET] / tr["面積_数値"])
+    # np.log(Series) は Series を返すが、pandas-stubs では ndarray になる
+    log_unit: pd.Series = np.log(tr[TARGET] / tr["面積_数値"])  # type: ignore[assignment]
     area_band = pd.cut(
         tr["面積_数値"],
         [0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 2000],
@@ -138,9 +139,11 @@ def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
     """
     early = tr[tr["取引年"] < TIER_BASE_YEAR]
     city = early["市区町村名"].astype(object)
-    city_median = np.log(early[TARGET] / early["面積_数値"]).groupby(city).median()
+    # np.log(Series) は Series を返すが、pandas-stubs では ndarray になる
+    city_median = np.log(early[TARGET] / early["面積_数値"]).groupby(city).median()  # type: ignore[attr-defined]
     tier = pd.qcut(city.map(city_median), N_TIERS, labels=False) + 1
-    return tier.groupby(city).first().astype(str).to_dict()
+    # キーは市区町村名（str）だが、pandas-stubs では to_dict() のキーが Hashable になる
+    return tier.groupby(city).first().astype(str).to_dict()  # type: ignore[return-value]
 
 
 def fit_trend(tr: pd.DataFrame) -> Trend:
