@@ -33,17 +33,17 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     """
     quarter = train["経過四半期"]
     last = quarter.max()
-    folds = []
+    folds: list[tuple[np.ndarray, np.ndarray]] = []
     for k in range(N_FOLDS):
         valid_end = last - k * VALID_QUARTERS
         valid_start = valid_end - VALID_QUARTERS + 1
-        tr_index = np.flatnonzero(quarter < valid_start)
-        va_index = np.flatnonzero(quarter.between(valid_start, valid_end))
-        folds.append((tr_index, va_index))
+        tr_pos = np.flatnonzero(quarter < valid_start)
+        va_pos = np.flatnonzero(quarter.between(valid_start, valid_end))
+        folds.append((tr_pos, va_pos))
     return folds
 
 
-def rmsle(price_true: np.ndarray, price_pred: np.ndarray) -> float:
+def rmsle(price_true: pd.Series | np.ndarray, price_pred: np.ndarray) -> float:
     """RMSLE（コンペの評価指標）を計算する。
 
     Args:

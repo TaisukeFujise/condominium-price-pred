@@ -1,0 +1,254 @@
+"""線形回帰（Ridge）で粗く当て、その残差を LightGBM で学習するモデル。
+
+アンサンブルに、GBDT（LightGBM・CatBoost）と間違え方の違うモデルを足すために使う。
+GBDT 同士は残差の相関が 0.9 を超えやすく、混ぜても伸びにくい（Issue #38）。
+線形回帰を選んだのは、MLP と違い、標準化・カテゴリの埋め込み・欠損処理を一から作らずに足せるため。
+"""
+
+from collections.abc import Callable
+from typing import Self
+
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from src.models.base import Model, fill_missing_category
+from src.models.params import LGBM_PARAMS
+
+# 地区名・最寄駅：名称はカテゴリ数が多すぎる（1000〜600 種類）ので線形側では使わない。
+# 緯度・経度・主要駅までの距離が数値特徴量としてすでにあり、位置情報は失われない。
+# 残差側の LightGBM にはどちらもそのまま渡す
+_LINEAR_CAT_MAX_CARDINALITY = 60
+
+
+class LinearResidual(Model):
+    """Ridge の残差を LightGBM で学習するモデル。1 つのインスタンスは 1 回だけ学習する。"""
+
+    def __init__(
+        self,
+        params: dict = LGBM_PARAMS,
+        per_area: bool = True,
+        alpha: float = 10.0,
+        subset: Callable[[pd.DataFrame], np.ndarray] | None = None,
+    ) -> None:
+        """学習前のモデルを作る。
+
+        Args:
+            params: 残差側 LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
+            per_area: 目的変数を㎡単価にするか（False なら総額）。
+            alpha: Ridge の正則化の強さ。
+            subset: 学習に使う行を選ぶ関数（base.py の Model.subset）。None なら全行。
+        """
+        self.params = dict(params)
+        self.per_area = per_area
+        self.subset = subset
+        self.alpha = alpha
+        self._linear: Pipeline | None = None
+        self._linear_cols: list[str] = []
+        self.booster: lgb.Booster | None = None
+        self.features: list[str] = []
+
+    def fit_with_validation(
+        self,
+        x_train: pd.DataFrame,
+        y_train: pd.Series,
+        x_valid: pd.DataFrame,
+        y_valid: pd.Series,
+        weight: pd.Series | None,
+    ) -> Self:
+        """CV 用に学習する。検証データの残差が 100 ラウンド改善しなくなったら止める。
+
+        Args:
+            x_train: 学習データの特徴量。
+            y_train: 学習データの目的変数。
+            x_valid: 検証データの特徴量。
+            y_valid: 検証データの目的変数。
+            weight: 学習データの行ごとの重み。None なら全行同じ重み。
+
+        Returns:
+            学習済みのモデル（自分自身）。
+        """
+        self.features = list(x_train.columns)
+        resid_train = self._fit_linear(x_train, y_train, weight)
+        resid_valid = y_valid - self._predict_linear(x_valid)
+        self.booster = lgb.train(
+            self.params,
+            lgb.Dataset(x_train, resid_train, weight=weight),
+            num_boost_round=10000,
+            valid_sets=[lgb.Dataset(x_valid, resid_valid)],
+            callbacks=[lgb.early_stopping(100, verbose=False)],
+        )
+        return self
+
+    def fit(
+        self,
+        x: pd.DataFrame,
+        y: pd.Series,
+        weight: pd.Series | None,
+        cv_models: list[Self],
+    ) -> Self:
+        """本番用に学習する。木の本数は、CV の fold ごとの best_iteration の平均を使う。
+
+        Args:
+            x: 特徴量。
+            y: 目的変数。
+            weight: 行ごとの重み。None なら全行同じ重み。
+            cv_models: CV で、同じ設定のモデルを fold ごとに学習したもの。
+
+        Returns:
+            学習済みのモデル（自分自身）。
+        """
+        self.features = list(x.columns)
+        resid = self._fit_linear(x, y, weight)
+        num_boost_round = round(np.mean([m.best_iteration for m in cv_models]))
+        self.booster = lgb.train(
+            self.params,
+            lgb.Dataset(x, resid, weight=weight),
+            num_boost_round=num_boost_round,
+        )
+        return self
+
+    def predict(self, x: pd.DataFrame) -> np.ndarray:
+        """予測する（線形回帰の予測 + 残差 LightGBM の予測）。
+
+        Args:
+            x: 特徴量。
+
+        Returns:
+            目的変数の予測。
+        """
+        resid_pred = self._trained_booster().predict(
+            x[self.features], num_iteration=self.best_iteration
+        )
+        return self._predict_linear(x) + resid_pred
+
+    @property
+    def best_iteration(self) -> int | None:
+        """early stopping で決まった木の本数。fit() で作ったモデルでは None。"""
+        return self._trained_booster().best_iteration or None
+
+    def importance(self) -> pd.Series:
+        """残差側 LightGBM の特徴量重要度を計算する。
+
+        Returns:
+            特徴量ごとの gain の割合（合計 1）。大きい順に並ぶ。線形回帰側の寄与は含まない。
+        """
+        gain = pd.Series(
+            self._trained_booster().feature_importance(importance_type="gain"),
+            index=self.features,
+        )
+        return (gain / gain.sum()).sort_values(ascending=False)
+
+    def _fit_linear(
+        self, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
+    ) -> pd.Series:
+        """線形回帰を学習し、学習データの残差（目的変数 − 線形回帰の予測）を返す。
+
+        Args:
+            x: 学習データの特徴量。
+            y: 学習データの目的変数。
+            weight: 学習データの行ごとの重み。None なら全行同じ重み。
+
+        Returns:
+            学習データの残差。
+        """
+        self._linear_cols = _linear_columns(x)
+        self._linear = _build_linear(x[self._linear_cols], self.alpha)
+        self._linear.fit(
+            fill_missing_category(x[self._linear_cols]), y, ridge__sample_weight=weight
+        )
+        return y - self._predict_linear(x)
+
+    def _predict_linear(self, x: pd.DataFrame) -> np.ndarray:
+        """学習済みの線形回帰で予測する。
+
+        Args:
+            x: 特徴量。
+
+        Returns:
+            線形回帰の予測。
+        """
+        return self._trained_linear().predict(
+            fill_missing_category(x[self._linear_cols])
+        )
+
+    def _trained_booster(self) -> lgb.Booster:
+        """学習済みの booster を返す。
+
+        Returns:
+            学習済みの booster。学習前なら ValueError を投げる。
+        """
+        # 学習前に呼ぶと 'NoneType' has no attribute という分かりにくいエラーになるので、先に止める
+        if self.booster is None:
+            raise ValueError(
+                "まだ学習していない。先に fit か fit_with_validation を呼ぶ"
+            )
+        return self.booster
+
+    def _trained_linear(self) -> Pipeline:
+        """学習済みの線形回帰を返す。
+
+        Returns:
+            学習済みの線形回帰。学習前なら ValueError を投げる。
+        """
+        if self._linear is None:
+            raise ValueError(
+                "まだ学習していない。先に fit か fit_with_validation を呼ぶ"
+            )
+        return self._linear
+
+
+def _linear_columns(x: pd.DataFrame) -> list[str]:
+    """線形回帰に使う列を選ぶ。カテゴリ数が多すぎる列は除く。
+
+    Args:
+        x: 特徴量。
+
+    Returns:
+        数値列と、カテゴリ数が少ないカテゴリ列の列名。
+    """
+    cat_cols = x.select_dtypes("category").columns
+    num_cols = [c for c in x.columns if c not in cat_cols]
+    low_card_cat_cols = [
+        c for c in cat_cols if x[c].nunique() <= _LINEAR_CAT_MAX_CARDINALITY
+    ]
+    return num_cols + low_card_cat_cols
+
+
+def _build_linear(x: pd.DataFrame, alpha: float) -> Pipeline:
+    """数値列は欠損を中央値で埋めて標準化し、カテゴリ列は one-hot にして、Ridge につなぐ。
+
+    Args:
+        x: 線形回帰に使う列の特徴量。列の型で数値列とカテゴリ列を分ける。
+        alpha: Ridge の正則化の強さ。
+
+    Returns:
+        学習前の前処理と Ridge のパイプライン。
+    """
+    cat_cols = x.select_dtypes("category").columns.tolist()
+    num_cols = [c for c in x.columns if c not in cat_cols]
+    preprocess = ColumnTransformer(
+        [
+            (
+                "num",
+                Pipeline(
+                    [
+                        ("impute", SimpleImputer(strategy="median")),
+                        ("scale", StandardScaler()),
+                    ]
+                ),
+                num_cols,
+            ),
+            (
+                "cat",
+                OneHotEncoder(handle_unknown="ignore"),
+                cat_cols,
+            ),
+        ]
+    )
+    return Pipeline([("preprocess", preprocess), ("ridge", Ridge(alpha=alpha))])
