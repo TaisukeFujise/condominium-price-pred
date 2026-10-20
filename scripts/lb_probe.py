@@ -18,10 +18,10 @@ Private（2025Q4・2026Q1）のずれは直接は測れない。既定では m1 
 この比で延ばすと補正しすぎるおそれがある。
 
 実行:
-    uv run python -m scripts.lb_probe make submissions/first.csv           # 探りの提出ファイルを作る
-    uv run python -m scripts.lb_probe solve 0.18595 0.18560 --shift -0.01  # m1 と時期ごとのずらし量
-    uv run python -m scripts.lb_probe solve 0.18595 0.18560 --shift -0.01 \\
-        --apply submissions/final_raw.csv submissions/final.csv --first submissions/first.csv
+    uv run python -m scripts.lb_probe make                          # 探りの提出ファイルを作る
+    uv run python -m scripts.lb_probe solve 0.18560 --shift -0.01   # m1 と時期ごとのずらし量
+    uv run python -m scripts.lb_probe solve 0.18560 --shift -0.01 \\
+        --apply submissions/final_raw.csv submissions/final.csv
 """
 
 import argparse
@@ -31,9 +31,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.config import DATA_DIR, SUBMISSION_DIR
+from src.config import DATA_DIR, ROOT, SUBMISSION_DIR
 
 Q3, Q4, Q1 = "2025年第3四半期", "2025年第4四半期", "2026年第1四半期"
+# m1 はこの提出を基準に測る。探りの提出も最後の補正もこのファイルに合わせる必要があり、
+# seed 平均で作り直すのが難しいので、submissions/（git の管理外）ではなくリポジトリに置く
+BASE = ROOT / "probe" / "1_base.csv"
+BASE_LB = 0.18595
 # 仮定が外れて Public がランダムだったとき、m1 の見積もりに (0.37 − 1) c / 2 の偏りが乗るので小さくする
 SHIFT = -0.01
 # 1 四半期先の外れに対する 2・3 四半期先の外れの比（scripts/backtest_trend.py。相関 0.83・0.76）
@@ -47,12 +51,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
     make = commands.add_parser("make", help="探りの提出ファイルを作る")
-    make.add_argument("first", type=Path, help="1 回目に提出したファイル")
+    make.add_argument(
+        "--first", type=Path, default=BASE, help="1 回目に提出したファイル"
+    )
     make.add_argument("--shift", type=float, default=SHIFT)
     make.add_argument("--out", type=Path, default=SUBMISSION_DIR / "probe_q3.csv")
     solve = commands.add_parser("solve", help="2 つの LB から m1 とずらし量を求める")
-    solve.add_argument("lb0", type=float, help="1 回目の提出の Public LB")
     solve.add_argument("lb1", type=float, help="探りの提出の Public LB")
+    solve.add_argument(
+        "--lb0", type=float, default=BASE_LB, help="1 回目の提出の Public LB"
+    )
     solve.add_argument(
         "--shift",
         type=float,
@@ -74,7 +82,8 @@ def main() -> None:
     solve.add_argument(
         "--first",
         type=Path,
-        help="1 回目に提出したファイル。--apply では必須。RAW_CSV との時期ごとの予測の水準の差も補正する",
+        default=BASE,
+        help="1 回目に提出したファイル。RAW_CSV との時期ごとの予測の水準の差も補正する",
     )
     args = parser.parse_args()
 
@@ -82,8 +91,6 @@ def main() -> None:
     if args.command == "make":
         _make_probe(args.first, args.out, args.shift, periods)
         return
-    if (args.apply is None) != (args.first is None):
-        parser.error("--apply と --first は一緒に指定する")
     shifts = _solve(args.lb0, args.lb1, args.shift, args.trend_ratio)
     for q in (Q3, Q4, Q1):
         print(
@@ -135,7 +142,7 @@ def _make_probe(first: Path, out: Path, shift: float, periods: pd.Series) -> Non
     out.parent.mkdir(parents=True, exist_ok=True)
     probe.to_csv(out, index=False)
     print(f"保存しました: {out}（{Q3} の {int(is_q3.sum())} 行に {shift:+}）")
-    print(f"LB が出たら: solve <1 回目の LB> <探りの LB> --shift {shift}")
+    print(f"LB が出たら: solve <探りの LB> --shift {shift}")
 
 
 def _solve(lb0: float, lb1: float, shift: float, trend_ratio: bool) -> dict[str, float]:
