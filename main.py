@@ -1,9 +1,10 @@
-"""学習から提出ファイルの作成までの流れ。各工程の中身は src/ にある。
+"""前処理から提出ファイルの作成までを、工程の順に呼ぶ。
 
-工程 3〜8（学習データの選択から後処理まで）のつなぎ方は src/pipeline.py。
+各工程の中身は src/ にある。工程の番号と一覧は docs/workflow.md。
+工程 3〜8（学習データの選択から後処理まで）は fold ごとに動くので、src/pipeline.py がまとめて呼ぶ。
 
-精度改善は、該当する工程のファイルを直してこのファイルを実行し、
-CV が良くなったら PR を出す（docs/experiment-guide.md）。
+精度を改善するときは、工程のファイルを直してこのファイルを実行し、CV が良くなったら PR を出す
+（docs/experiment-guide.md）。
 
 実行: uv run python main.py
 """
@@ -87,9 +88,10 @@ def _outside_23_wards(x: pd.DataFrame) -> np.ndarray:
 
 # 使うモデル。src/models/base.py の Model を継承したクラスを並べる。
 # 2 つ以上並べると、予測を src/ensemble.py の 2 段目で混ぜる（例: [LGBM, CatBoost]）。混ぜ方は CV の予測から自動で学習する
+# モデルが 1 つでも 2 段目はかかり、面積・築年数などで予測を補正する。2 段目なしの単体の CV と比べるときは、表示の「2 段目なし」の値を使う
 # 目的変数を総額にしたモデルは per_area=False を渡す（例: partial(LGBM, per_area=False)）
 # 一部の行だけで学習するモデルは subset に行を選ぶ関数を渡す（例: partial(LGBM, subset=_built_over_30)。CatBoost なども同じ）。
-# その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ条件には test でも分かる列だけを使う
+# その予測は平均には入れず、2 段目の入力にだけ使う。行を選ぶ関数には特徴量（features）の列しか渡らないので、条件には特徴量の列を使う
 # 全行で学習しても平均に入れないモデル（例: Hedonic・TargetEncodedLGBM）は、クラスに stack_only = True を書く
 MODELS: list[Callable[[], Model]] = [
     LGBM,
@@ -115,7 +117,8 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    cv_models, cv_stack_inputs, cv_true_prices = _cross_validate(train, features)
+    cv_models, cv_stack_inputs, cv_true_prices = _cross_val_predict(train, features)
+    _print_cv_scores(train, features, cv_models, cv_stack_inputs, cv_true_prices)
 
     # 本番：2 段目を全 fold の予測で学習し、全データで学習し直したモデルの test の予測を混ぜる
     stacker = ensemble.fit_stacker(cv_stack_inputs, cv_true_prices)
@@ -126,23 +129,22 @@ def main() -> None:
     _save_submission(test, price)
 
 
-def _cross_validate(
+def _cross_val_predict(
     train: pd.DataFrame, features: list[str]
 ) -> tuple[list[list[Model]], list[pd.DataFrame], list[np.ndarray]]:
-    """時系列 CV で学習・検証し、fold ごとと平均の RMSLE を表示する。
+    """時系列 CV の fold ごとに、各モデル（MODELS）を学習データで学習し、検証データを予測する。
 
-    2 段目（混ぜ方）を検証データの答えで学習すると CV が良く見えすぎるので、
-    ある fold の 2 段目は、それより前の期間の fold の予測だけで学習してから、その fold のスコアを測る。
-    いちばん前の期間の fold には学習に使える fold がないので、2 段目なし（土台のまま）で測る。
+    戻り値は、本番の学習の材料になる。RMSLE は計算しない（_print_cv_scores で計算する）。
 
     Args:
         train: コンペの学習データ全体。
         features: モデルに入れる列名の一覧。
 
     Returns:
-        fold ごとに学習したモデル、fold ごとの検証データの 2 段目の入力、その正解の価格（円）。
-        モデルの [i] は MODELS[i] を fold ごとに学習したもの。本番の木の本数などを決めるのに使う。
-        2 段目の入力と正解は、本番の 2 段目の学習データになる。
+        次の 3 つ。2 段目の入力と正解は、本番の 2 段目（src/ensemble.py）の学習データになる。
+        - モデル：[i][fold] は MODELS[i] をその fold で学習したもの。本番の木の本数などを決めるのに使う。
+        - 2 段目の入力：fold ごとの、検証データに対する各モデルの予測。
+        - 正解：fold ごとの、検証データの価格（円）。
     """
     folds = validation.time_series_folds(train)
     cv_stack_inputs: list[pd.DataFrame] = []
@@ -157,7 +159,32 @@ def _cross_validate(
         cv_true_prices.append(va[TARGET].to_numpy())
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
+    return cv_models, cv_stack_inputs, cv_true_prices
 
+
+def _print_cv_scores(
+    train: pd.DataFrame,
+    features: list[str],
+    cv_models: list[list[Model]],
+    cv_stack_inputs: list[pd.DataFrame],
+    cv_true_prices: list[np.ndarray],
+) -> None:
+    """fold ごとに 2 段目を学習して検証データの RMSLE を計算し、fold ごとの値と平均を表示する。
+
+    表示するだけで、本番には何も渡さない。
+
+    2 段目の学習には、RMSLE を計算する fold より前の期間の fold の予測だけを使う。
+    RMSLE を計算する fold の正解で学習すると、答えを見て混ぜ方を決めることになり、CV が良く見えすぎるため。
+    いちばん前の期間の fold には、それより前の fold がないので、2 段目を使わずに計算する。
+
+    Args:
+        train: コンペの学習データ全体。
+        features: モデルに入れる列名の一覧。
+        cv_models: _cross_val_predict で学習したモデル。表示する best_iteration を取り出す。
+        cv_stack_inputs: _cross_val_predict で作った、fold ごとの 2 段目の入力。
+        cv_true_prices: _cross_val_predict で作った、fold ごとの正解の価格（円）。
+    """
+    folds = validation.time_series_folds(train)
     scores: list[float] = []
     base_scores: list[float] = []
     stack_gains: list[float] = []
@@ -200,7 +227,6 @@ def _cross_validate(
         f"2 段目の効果（2 段目がある {len(stack_gains)} fold の、2 段目あり − なしの平均）: "
         f"{np.mean(stack_gains):+.5f}"
     )
-    return cv_models, cv_stack_inputs, cv_true_prices
 
 
 def _print_importance(test_models: list[Model]) -> None:

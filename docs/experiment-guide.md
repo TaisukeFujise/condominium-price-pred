@@ -40,6 +40,7 @@
    ```bash
    uv run ruff format .
    uv run ruff check --fix .
+   uv run mypy
    ```
 
 5. 結果に応じて PR を出す

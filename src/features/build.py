@@ -1,6 +1,8 @@
-"""特徴量をまとめて作る。
+"""特徴量をまとめて作る（工程 2）。
 
-特徴量はテーマごとにファイルを分けて make(df) として書き（base.py を参照）、MAKERS に足す。
+特徴量は、テーマごとに src/features/<テーマ>.py の make(df) として書き、MAKERS に足す。
+make は前処理済みの表を受け取り、新しい列だけの表を返す（例は building.py）。
+モデルにそのまま入れる前処理済みの列は、base.py の FEATURES に並べてある。
 """
 
 from collections.abc import Callable
