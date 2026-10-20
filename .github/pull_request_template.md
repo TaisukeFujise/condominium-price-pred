@@ -43,7 +43,7 @@
 ## チェック
 
 - [ ] `uv run python main.py` が最後まで動く
-- [ ] `uv run ruff format .` と `uv run ruff check --fix .` を実行し、指摘がない
+- [ ] `uv run ruff format .`・`uv run ruff check --fix .`・`uv run mypy` を実行し、指摘がない
 - [ ] 変更は 1 つだけ（複数の変更を混ぜていない）
 - [ ] `src/validation.py` を変えていない（変えた場合は、チームで合意済みで `VERSION` を上げた）
 - [ ] テスト期間（2025年第3四半期以降）の取引データを、外部から取得・参照していない
