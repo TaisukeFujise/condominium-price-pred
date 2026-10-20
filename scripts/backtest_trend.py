@@ -16,7 +16,6 @@ import pandas as pd
 
 from src import preprocess, target
 
-# 指数を作るのに最低限ほしい四半期の数
 _MIN_QUARTERS = 5
 
 
@@ -38,6 +37,11 @@ def main() -> None:
         error = (trend.log_index(future) - trend.log_index(at_t)) - (
             full.log_index(future) - full.log_index(at_t)
         )
+        # 取引のない市区の区分があると指数が NaN になり、平均から黙って抜けて比が偏る
+        if np.isnan(error).any():
+            raise ValueError(
+                f"時点 {t} で指数が NaN の行が {int(np.isnan(error).sum())} 行ある"
+            )
         by_ahead = pd.Series(error).groupby((future[quarter] - t).to_numpy()).mean()
         rows.append(
             {
