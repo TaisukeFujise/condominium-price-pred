@@ -43,7 +43,7 @@ def time_series_folds(train: pd.DataFrame) -> list[tuple[np.ndarray, np.ndarray]
     return folds
 
 
-def rmsle(price_true: pd.Series, price_pred: np.ndarray) -> float:
+def rmsle(price_true: pd.Series | np.ndarray, price_pred: np.ndarray) -> float:
     """RMSLE（コンペの評価指標）を計算する。
 
     Args:
