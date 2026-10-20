@@ -61,11 +61,12 @@ Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理
 
 ### コードの整形とチェック
 
-PR を出す前に実行する。書式をそろえ、怪しい書き方を指摘・修正する（[ruff](https://docs.astral.sh/ruff/)）。
+PR を出す前に実行する。書式をそろえ、怪しい書き方を指摘・修正する（[ruff](https://docs.astral.sh/ruff/)）。型ヒントとコードの食い違いを調べる（[mypy](https://mypy.readthedocs.io/)）。
 
 ```bash
 uv run ruff format .
 uv run ruff check --fix .
+uv run mypy
 ```
 
 ### スクリプト
