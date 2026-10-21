@@ -1,8 +1,8 @@
-"""線形回帰（Ridge）で粗く当て、残差を LightGBM で学習するモデル。
+"""線形回帰（Ridge）で粗く当て、その残差を LightGBM で学習するモデル。
 
-GBDT 同士（LightGBM・CatBoost）は残差相関が 0.9 超えになりやすく、混ぜても伸びにくい
-（Issue #38）。線形回帰は GBDT と間違え方の系統が違うので、MLP のような前処理コスト
-（標準化・カテゴリの埋め込み・欠損処理を一から作る）をかけずに安く多様性を作れる。
+アンサンブルに、GBDT（LightGBM・CatBoost）と間違え方の違うモデルを足すために使う。
+GBDT 同士は残差の相関が 0.9 を超えやすく、混ぜても伸びにくい（Issue #38）。
+線形回帰を選んだのは、MLP と違い、標準化・カテゴリの埋め込み・欠損処理を一から作らずに足せるため。
 """
 
 from collections.abc import Callable
@@ -42,7 +42,7 @@ class LinearResidual(Model):
             params: 残差側 LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
             per_area: 目的変数を㎡単価にするか（False なら総額）。
             alpha: Ridge の正則化の強さ。
-            subset: 学習に使う行を絞る条件（base.py の Model.subset）。None なら全行。
+            subset: 学習に使う行を選ぶ関数（base.py の Model.subset）。None なら全行。
         """
         self.params = dict(params)
         self.per_area = per_area
@@ -74,14 +74,13 @@ class LinearResidual(Model):
             学習済みのモデル（自分自身）。
         """
         self.features = list(x_train.columns)
-        resid_train, resid_valid = self._fit_linear(
-            x_train, y_train, x_valid, y_valid, weight
-        )
+        resid_train = self._fit_linear(x_train, y_train, weight)
+        resid_valid = y_valid - self._predict_linear(x_valid)
         self.booster = lgb.train(
             self.params,
-            lgb.Dataset(x_train[self.features], resid_train, weight=weight),
+            lgb.Dataset(x_train, resid_train, weight=weight),
             num_boost_round=10000,
-            valid_sets=[lgb.Dataset(x_valid[self.features], resid_valid)],
+            valid_sets=[lgb.Dataset(x_valid, resid_valid)],
             callbacks=[lgb.early_stopping(100, verbose=False)],
         )
         return self
@@ -99,22 +98,17 @@ class LinearResidual(Model):
             x: 特徴量。
             y: 目的変数。
             weight: 行ごとの重み。None なら全行同じ重み。
-            cv_models: CV で同じモデルを fold ごとに学習したもの。
+            cv_models: CV で、同じ設定のモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。
         """
         self.features = list(x.columns)
-        self._linear_cols = _linear_columns(x)
-        self._linear = _build_linear(x[self._linear_cols], self.alpha)
-        self._linear.fit(
-            fill_missing_category(x[self._linear_cols]), y, ridge__sample_weight=weight
-        )
-        resid = y - self._linear.predict(fill_missing_category(x[self._linear_cols]))
+        resid = self._fit_linear(x, y, weight)
         num_boost_round = round(np.mean([m.best_iteration for m in cv_models]))
         self.booster = lgb.train(
             self.params,
-            lgb.Dataset(x[self.features], resid, weight=weight),
+            lgb.Dataset(x, resid, weight=weight),
             num_boost_round=num_boost_round,
         )
         return self
@@ -131,10 +125,7 @@ class LinearResidual(Model):
         resid_pred = self._trained_booster().predict(
             x[self.features], num_iteration=self.best_iteration
         )
-        linear_pred = self._trained_linear().predict(
-            fill_missing_category(x[self._linear_cols])
-        )
-        return linear_pred + resid_pred
+        return self._predict_linear(x) + resid_pred
 
     @property
     def best_iteration(self) -> int | None:
@@ -154,39 +145,37 @@ class LinearResidual(Model):
         return (gain / gain.sum()).sort_values(ascending=False)
 
     def _fit_linear(
-        self,
-        x_train: pd.DataFrame,
-        y_train: pd.Series,
-        x_valid: pd.DataFrame,
-        y_valid: pd.Series,
-        weight: pd.Series | None,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """線形回帰を学習し、train・valid の残差（目的変数 − 線形回帰の予測）を返す。
+        self, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
+    ) -> pd.Series:
+        """線形回帰を学習し、学習データの残差（目的変数 − 線形回帰の予測）を返す。
 
         Args:
-            x_train: 学習データの特徴量。
-            y_train: 学習データの目的変数。
-            x_valid: 検証データの特徴量。
-            y_valid: 検証データの目的変数。
+            x: 学習データの特徴量。
+            y: 学習データの目的変数。
             weight: 学習データの行ごとの重み。None なら全行同じ重み。
 
         Returns:
-            学習データの残差と、検証データの残差。
+            学習データの残差。
         """
-        self._linear_cols = _linear_columns(x_train)
-        self._linear = _build_linear(x_train[self._linear_cols], self.alpha)
+        self._linear_cols = _linear_columns(x)
+        self._linear = _build_linear(x[self._linear_cols], self.alpha)
         self._linear.fit(
-            fill_missing_category(x_train[self._linear_cols]),
-            y_train,
-            ridge__sample_weight=weight,
+            fill_missing_category(x[self._linear_cols]), y, ridge__sample_weight=weight
         )
-        resid_train = y_train - self._linear.predict(
-            fill_missing_category(x_train[self._linear_cols])
+        return y - self._predict_linear(x)
+
+    def _predict_linear(self, x: pd.DataFrame) -> np.ndarray:
+        """学習済みの線形回帰で予測する。
+
+        Args:
+            x: 特徴量。
+
+        Returns:
+            線形回帰の予測。
+        """
+        return self._trained_linear().predict(
+            fill_missing_category(x[self._linear_cols])
         )
-        resid_valid = y_valid - self._linear.predict(
-            fill_missing_category(x_valid[self._linear_cols])
-        )
-        return resid_train, resid_valid
 
     def _trained_booster(self) -> lgb.Booster:
         """学習済みの booster を返す。
@@ -232,7 +221,7 @@ def _linear_columns(x: pd.DataFrame) -> list[str]:
 
 
 def _build_linear(x: pd.DataFrame, alpha: float) -> Pipeline:
-    """数値列は欠損埋め+標準化、カテゴリ列は one-hot にして Ridge へつなぐ。
+    """数値列は欠損を中央値で埋めて標準化し、カテゴリ列は one-hot にして、Ridge につなぐ。
 
     Args:
         x: 線形回帰に使う列の特徴量。列の型で数値列とカテゴリ列を分ける。
