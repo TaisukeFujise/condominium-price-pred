@@ -19,5 +19,6 @@ external_data/
 .vscode/
 .idea/
 
+.claude
 # Optuna の探索結果（scripts/tune_lgbm.py）
 tuning/
