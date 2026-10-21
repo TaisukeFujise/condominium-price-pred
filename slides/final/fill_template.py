@@ -15,7 +15,12 @@ from lxml import etree
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
-from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_MARKER_STYLE
+from pptx.enum.chart import (
+    XL_CHART_TYPE,
+    XL_LABEL_POSITION,
+    XL_LEGEND_POSITION,
+    XL_MARKER_STYLE,
+)
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR
 from pptx.oxml.ns import qn
@@ -560,6 +565,19 @@ last_cv.size = 7
 last_cv.format.fill.solid()
 last_cv.format.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 last_cv.format.line.color.rgb = RGBColor(0x99, 0x99, 0x99)
+
+# 9〜12 は点が近くて読み分けにくいので、Public LB の 10 と 12 だけ値を添える
+for i in (9, 11):
+    label = chart.plots[0].series[1].points[i].data_label
+    label.show_value = True
+    dLbl = label._get_or_add_dLbl()
+    dLbl.find(qn("c:idx")).addnext(
+        etree.fromstring(
+            '<c:numFmt xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" formatCode="0.00000" sourceLinked="0"/>'
+        )
+    )
+    label.position = XL_LABEL_POSITION.ABOVE
+    label.font.size = Pt(9)
 last_cv.format.line.width = Pt(1.5)
 
 box = s_score.shapes.add_textbox(Inches(6.5), Inches(2.3), Inches(3.2), Inches(3.1))
@@ -659,7 +677,13 @@ fill_table(
             "—",
             "不採用、細かい住所がない",
         ],
-        ["特徴量 9 つ、2 段目の設定など", "差 0.0001 以内", "—", "—", "不採用"],
+        [
+            "2 段目に渡す列（9 通り）と木の本数",
+            "差 0.0001 以内",
+            "—",
+            "—",
+            "不採用、2 段目は頭打ち",
+        ],
     ],
     y=1.84,
     sz=11.5,
