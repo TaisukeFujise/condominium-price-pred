@@ -52,11 +52,23 @@ CATBOOST_PARAMS: dict[str, Any] = {
     "allow_writing_files": False,
 }
 
+# ヘドニック回帰（src/models/hedonic.py）。2 段目の入力にだけ使うので、単独の CV では調整していない（#72）
+HEDONIC_PARAMS: dict[str, Any] = {
+    # 地区名（1214 種類）の one-hot が件数の少ない地区に合わせすぎないよう、Ridge で全体の平均に寄せる
+    "alpha": 3.0,
+    # 3 件未満のカテゴリの値は 1 つにまとめる
+    "min_frequency": 3,
+    # 築年数・面積などの曲線の細かさ（区切りの数）
+    "n_knots": 8,
+}
+
 # 2 段目（src/ensemble.py の stacking）。学習できるのは OOF のある数四半期だけなので、
 # 浅い木・葉ごとに多くの行・強い L2 にして合わせすぎを防ぐ
 STACK_PARAMS: dict[str, Any] = {
-    "objective": "huber",
-    "alpha": 0.2,
+    # 1 段目と違い Huber にしない。Huber は残差の中央値に近いものを狙い、安い側に外れる取引のせいで
+    # 平均より高めにずらす。RMSLE で一番良いのは平均なので二乗誤差にする（#73。補正の平均を引く
+    # ensemble.blend と合わせて CV −0.00066。Huber のまま平均を引くだけでは −0.00046）
+    "objective": "regression",
     "metric": "rmse",
     "learning_rate": 0.03,
     "num_leaves": 7,
@@ -69,5 +81,7 @@ STACK_PARAMS: dict[str, Any] = {
     "seed": SEED,
     "verbose": -1,
 }
-# 本数は少なめにして、合わせすぎを防ぐ。今の CV の測り方（2 段目は前の期間の fold だけで学習する）では、本数を選び直していない（#81）
-STACK_ROUNDS = 50
+# 6 モデルだけなら 50〜500 本で CV はほぼ同じ（差 0.0001）。一部の行だけのモデルやヘドニック回帰のように
+# 弱い入力を増やすと、50 本ではほとんど使われず、本数を増やして初めて効く（#72。400 本で 6 モデルより −0.00033）。
+# 今の CV の測り方（2 段目は前の期間の fold だけで学習する）でも、200〜800 本で差は 0.0001 以内（#81）
+STACK_ROUNDS = 400

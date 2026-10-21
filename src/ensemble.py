@@ -1,14 +1,16 @@
 """アンサンブル（工程 7）。複数モデルの予測（円）を、2 段目の LightGBM で混ぜる（stacking）。
 
 混ぜた予測は「土台 + 2 段目の予測」で、どちらも log で表す。
-- 土台：全行で学習したモデル（Model.subset が None）の予測の、log の平均。
+- 土台：全行で学習したモデル（Model.subset が None で、Model.stack_only でない）の予測の、log の平均。
 - 2 段目：土台からのずれを予測する LightGBM。入力は、各モデルの予測と土台との差・面積・築年数・
   学習期間の何四半期先か・市区町村の価格帯・価格情報区分。
 
 一部の行だけで学習したモデル（Model.subset あり）は、土台の平均に入れず、2 段目の入力にだけ使う。
 学習に使っていない行の予測が弱く、平均に入れると悪くなるため。
+決定木以外の弱いモデル（Model.stack_only）も同じ扱いにする。
 
 土台の値そのものは 2 段目に入れない（予測の高さごとの補正になり、Public LB で悪くなった isotonic 較正と同じ種類のため。#67）。
+同じ理由で、2 段目には全体の水準も動かさせない（blend で補正の平均を引く）。水準は相場の指数（src/target.py）が決める。
 
 2 段目は正解の価格から学習するので、学習に使った行で測ると CV が良く見えすぎる。
 CV で 2 段目をどの fold で学習するかは、main.py の _print_cv_scores に書いた。
@@ -95,7 +97,10 @@ def blend(stack_inputs: pd.DataFrame, stacker: lgb.Booster | None) -> np.ndarray
     x, base = _split(stack_inputs)
     if stacker is None:
         return np.expm1(base)
-    return np.expm1(base + stacker.predict(x))
+    correction = np.asarray(stacker.predict(x))
+    # 2 段目がほかの fold から学んだ水準のずれは、fold ごとに向きが違い当てにならない（#67 の表）。
+    # 予測する行の補正の平均を引くと 3 fold すべてで良くなった（#73）。正解は使わない
+    return np.expm1(base + correction - correction.mean())
 
 
 def _split(stack_inputs: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray]:
