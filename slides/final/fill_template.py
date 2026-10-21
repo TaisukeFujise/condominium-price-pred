@@ -531,7 +531,8 @@ fill_body(
 
 # ---- スコアの推移（提出したもの）：折れ線グラフ ------------------------------
 # 提出の中身・手元の CV・Public LB。CV が None の提出は、CV を測っていないもの
-PRIVATE_FINAL = 0.19786
+# Private LB は、最終の採点に選んだ 2 つ（10 と 12）だけ分かっている
+PRIVATE = {9: 0.19828, 11: 0.19786}
 SUBMISSIONS = [
     ("LightGBM のベースライン", 0.20674, 0.20542),
     ("カテゴリの扱いと学習率の調整", 0.20360, 0.20222),
@@ -561,7 +562,7 @@ fill_body(
         ),
         (
             0,
-            "10 を ※ の測り方で測ると 0.18614（seed 42）。12 の Private LB は 0.19786 で、Public より 0.012 悪い",
+            "10 を ※ の測り方で測ると 0.18614（seed 42）。Private LB は 10 が 0.19828、12 が 0.19786",
             False,
         ),
     ],
@@ -580,8 +581,8 @@ data.add_series("CV", [cv for _, cv, _ in SUBMISSIONS], number_format="0.000")
 data.add_series("Public LB", [lb for _, _, lb in SUBMISSIONS], number_format="0.000")
 # Private LB は最終の提出（12）の値だけ分かっている
 data.add_series(
-    "Private LB（12）",
-    [None] * (len(SUBMISSIONS) - 1) + [PRIVATE_FINAL],
+    "Private LB",
+    [PRIVATE.get(i) for i in range(len(SUBMISSIONS))],
     number_format="0.000",
 )
 chart = s_score.shapes.add_chart(
@@ -655,15 +656,16 @@ private.marker.size = 8
 private.marker.format.fill.solid()
 private.marker.format.fill.fore_color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
 private.marker.format.line.color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
-label = private.points[len(SUBMISSIONS) - 1].data_label
-label.show_value = True
-label._get_or_add_dLbl().find(qn("c:idx")).addnext(
-    etree.fromstring(
-        '<c:numFmt xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" formatCode="0.00000" sourceLinked="0"/>'
+for i in PRIVATE:
+    label = private.points[i].data_label
+    label.show_value = True
+    label._get_or_add_dLbl().find(qn("c:idx")).addnext(
+        etree.fromstring(
+            '<c:numFmt xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" formatCode="0.00000" sourceLinked="0"/>'
+        )
     )
-)
-label.position = XL_LABEL_POSITION.LEFT
-label.font.size = Pt(9)
+    label.position = XL_LABEL_POSITION.ABOVE
+    label.font.size = Pt(9)
 
 box = s_score.shapes.add_textbox(Inches(6.5), Inches(1.85), Inches(3.2), Inches(3.5))
 txBody = box._element.find(qn("p:txBody"))
@@ -826,6 +828,7 @@ fill_body(
         (2, "提出 11 の悪化の幅から m を求められる", False),
         (0, "注意", True),
         (1, "Private LB は 0.19786（Public より 0.012 悪い）", False),
+        (2, "10 の 0.19828 より 0.0004 良い", False),
         (2, "補正で LB が動くのは最大 0.0036", False),
         (2, "差の大半は補正以外による", False),
     ],
