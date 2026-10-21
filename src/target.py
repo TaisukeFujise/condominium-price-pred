@@ -1,11 +1,15 @@
-"""目的変数の設計。モデルに何を予測させるか。
+"""目的変数の設計（工程 4）。モデルに何を予測させるか。
 
-to_target と to_price は対になっている。to_price(モデルの予測) で円の価格に戻せるようにする。
+目的変数は「log(㎡単価) − 相場の指数」（per_area=False のモデルは「log(総額) − 相場の指数」）。
+次の 3 つの関数で作り、円に戻す。
+- fit_trend：学習データから、四半期ごとの相場の指数を作る。
+- to_target：価格を目的変数にする。
+- to_price：モデルの予測を円の価格に戻す（to_target の逆）。
 
-決定木は学習期間の最後の水準より先へ予測を伸ばせないので、相場の上昇分を目的変数から切り離す。
-学習データから四半期ごとの相場の指数を作り（fit_trend）、目的変数は log(㎡単価) から指数を引いたもの、
-予測は指数を学習期間より先へ直線で延ばした値を足して戻す。
-指数は価格から作るので、CV では fold ごとにその fold の学習データだけで fit_trend を呼ぶ。
+相場の指数を引くのは、決定木が、学習期間の最後の水準より先へ予測を伸ばせないため。
+学習期間より先の四半期の指数は、直近の上がる速さで直線に延ばす。
+
+指数は価格から作るので、CV では fold ごとに、その fold の学習データだけで fit_trend を呼ぶ。
 """
 
 from dataclasses import dataclass
@@ -37,7 +41,7 @@ class Trend:
         index_by_group: (グループ, 経過四半期) ごとの指数（log）。学習期間の最後の四半期を 0 とする。
         slope: グループごとの 1 四半期あたりの上がる速さ（log）。
         last_quarter: 学習期間の最後の経過四半期。
-        city_group: 市区町村名 → グループ。ここにない市区町村は OVERALL の指数を使う。
+        city_group: 市区町村名 → グループ（価格帯）。ここにない市区町村は OVERALL の指数を使う。
     """
 
     index_by_group: dict[str, pd.Series]
@@ -46,7 +50,7 @@ class Trend:
     city_group: dict[str, str]
 
     def log_index(self, rows: pd.DataFrame) -> np.ndarray:
-        """行ごとに、その四半期の指数（log）を返す。学習期間より先は延ばした値。
+        """行ごとに、取引した四半期の指数（log）を返す。学習期間より先の四半期は、直線で延ばした値を返す。
 
         Args:
             rows: 経過四半期と市区町村名の列を含む行。
@@ -69,12 +73,13 @@ class Trend:
 
 
 def _market_index(tr: pd.DataFrame) -> pd.Series:
-    """log(㎡単価) = 組の効果 + 四半期の効果 として、四半期の効果を指数（log）にする。
+    """log(㎡単価) = 組の効果 + 四半期の効果 とみなし、四半期の効果を相場の指数（log）にする。
 
-    組は 価格情報区分 × 地区名 × 面積帯 × 築年数帯。
-    築年数をそろえるのは、売れる物件が年々古くなっていて、そろえないと古くなった分の値下がりが相場の下落に見えるため。
-    面積帯・築年数帯の区切りは EDA 用のものを流用していて、細かさを変えても傾きはほとんど変わらない。
-    組ごとに含まれる期間が違う（成約価格情報は 2021 年から）ので、2 つの効果を交互に推定する。
+    組は、価格情報区分 × 地区名 × 面積帯 × 築年数帯。
+    築年数帯で分けるのは、売れる物件が年々古くなっているため。分けないと、古くなった分の値下がりが相場の下落に見える。
+    面積帯・築年数帯の区切りは、細かさを変えても上がる速さがほとんど変わらない。
+
+    組ごとに取引のある期間が違う（成約価格情報は 2021 年から）ので、2 つの効果を N_ITER 回、交互に推定する。
 
     Args:
         tr: 価格・面積・築年数・経過四半期の列を含む学習データ。
@@ -82,7 +87,8 @@ def _market_index(tr: pd.DataFrame) -> pd.Series:
     Returns:
         経過四半期ごとの指数（log）。最後の四半期を 0 とする。
     """
-    log_unit = np.log(tr[TARGET] / tr["面積_数値"])
+    # np.log(Series) は Series を返すが、pandas-stubs では ndarray になる
+    log_unit: pd.Series = np.log(tr[TARGET] / tr["面積_数値"])  # type: ignore[assignment]
     area_band = pd.cut(
         tr["面積_数値"],
         [0, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 90, 100, 2000],
@@ -128,7 +134,7 @@ def _growth_slope(quarter_index: pd.Series) -> float:
 def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
     """市区町村を、2021 年より前の㎡単価の中央値で 5 つの価格帯に分ける。
 
-    上がる速さそのものではなく水準で分けるのは、たまたまのぶれに合わせたグループにしないため。
+    上がる速さではなく、価格の水準で分ける。上がる速さで分けると、たまたまのぶれに合わせたグループになるため。
 
     Args:
         tr: 学習データ。
@@ -138,13 +144,15 @@ def _city_tiers(tr: pd.DataFrame) -> dict[str, str]:
     """
     early = tr[tr["取引年"] < TIER_BASE_YEAR]
     city = early["市区町村名"].astype(object)
-    city_median = np.log(early[TARGET] / early["面積_数値"]).groupby(city).median()
+    # np.log(Series) は Series を返すが、pandas-stubs では ndarray になる
+    city_median = np.log(early[TARGET] / early["面積_数値"]).groupby(city).median()  # type: ignore[attr-defined]
     tier = pd.qcut(city.map(city_median), N_TIERS, labels=False) + 1
-    return tier.groupby(city).first().astype(str).to_dict()
+    # キーは市区町村名（str）だが、pandas-stubs では to_dict() のキーが Hashable になる
+    return tier.groupby(city).first().astype(str).to_dict()  # type: ignore[return-value]
 
 
 def fit_trend(tr: pd.DataFrame) -> Trend:
-    """学習データから相場の指数と延ばす速さを決める。
+    """学習データから、価格帯ごとと全体の相場の指数と、学習期間より先へ延ばす速さを作る。
 
     Args:
         tr: 学習データ。CV では、その fold の学習データ。
@@ -163,33 +171,40 @@ def fit_trend(tr: pd.DataFrame) -> Trend:
     return Trend(index_by_group, slope, int(tr[QUARTER].max()), city_group)
 
 
-def to_target(rows: pd.DataFrame, trend: Trend) -> pd.Series:
+def to_target(rows: pd.DataFrame, trend: Trend, per_area: bool = True) -> pd.Series:
     """学習に使う目的変数を作る。
 
-    総額を面積で割ることで、物件規模を除いた㎡単価を学習する。
-    さらに相場の指数を引き、決定木にはその時期の相場に比べた㎡単価を予測させる。
+    per_area=True（既定）では「log(㎡単価) − 相場の指数」にする。
+    面積で割るのは、物件の広さの違いを除くため。指数を引くのは、その時期の相場に比べた㎡単価を予測させるため。
+
+    per_area=False では面積で割らず、「log(総額) − 相場の指数」にする。
+    ㎡単価のモデルと間違え方が違うので、アンサンブルに混ぜるために使う。
 
     Args:
         rows: 価格の列を含む行（学習データ、または early stopping 用の検証データ）。
         trend: fit_trend で学習データから作った指数。
+        per_area: True なら㎡単価、False なら総額を目的変数にする。
 
     Returns:
-        目的変数（log した㎡単価から指数を引いた値）。
+        目的変数（log(㎡単価) または log(総額) から、相場の指数を引いた値）。
     """
-    unit_price = rows[TARGET] / rows["面積_数値"]
-    return np.log(unit_price) - trend.log_index(rows)
+    price = rows[TARGET] / rows["面積_数値"] if per_area else rows[TARGET]
+    return np.log(price) - trend.log_index(rows)
 
 
-def to_price(pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend) -> np.ndarray:
-    """モデルの予測に指数を足して㎡単価に戻し、面積を掛けて総額にする。to_target の逆変換。
+def to_price(
+    pred: np.ndarray, pred_rows: pd.DataFrame, trend: Trend, per_area: bool = True
+) -> np.ndarray:
+    """モデルの予測に指数を足して、円の価格に戻す。to_target の逆変換。
 
     Args:
         pred: モデルの予測。
-        pred_rows: 面積_数値列を含む予測対象の行。
+        pred_rows: 予測した行。面積_数値・経過四半期・市区町村名の列が必要。
         trend: to_target と同じ指数。
+        per_area: to_target と同じ値。False なら面積を掛けない。
 
     Returns:
         円の価格。
     """
-    unit_price = np.exp(pred + trend.log_index(pred_rows))
-    return unit_price * pred_rows["面積_数値"].to_numpy()
+    price = np.exp(pred + trend.log_index(pred_rows))
+    return price * pred_rows["面積_数値"].to_numpy() if per_area else price

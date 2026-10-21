@@ -1,5 +1,6 @@
 """LightGBM の学習と予測。パラメータは params.py、メソッドの決まりは base.py。"""
 
+from collections.abc import Callable
 from typing import Self
 
 import lightgbm as lgb
@@ -13,15 +14,24 @@ from src.models.params import LGBM_PARAMS
 class LGBM(Model):
     """LightGBM のモデル。1 つのインスタンスは 1 回だけ学習する。"""
 
-    def __init__(self, params: dict = LGBM_PARAMS) -> None:
+    def __init__(
+        self,
+        params: dict = LGBM_PARAMS,
+        per_area: bool = True,
+        subset: Callable[[pd.DataFrame], np.ndarray] | None = None,
+    ) -> None:
         """学習前のモデルを作る。
 
         Args:
             params: LightGBM のパラメータ。省略すると params.py の LGBM_PARAMS。
+            per_area: 目的変数を㎡単価にするか（False なら総額）。
+            subset: 学習に使う行を選ぶ関数（base.py の Model.subset）。None なら全行。
         """
         # 初期値の LGBM_PARAMS は全インスタンスで共有されるので、seed だけ変えるときなどに
         # 書き換えが他のモデルへ広がらないようコピーする
         self.params = dict(params)
+        self.per_area = per_area
+        self.subset = subset
         self.booster: lgb.Booster | None = None
         self.features: list[str] = []
 
@@ -68,7 +78,7 @@ class LGBM(Model):
             x: 特徴量。
             y: 目的変数。
             weight: 行ごとの重み。None なら全行同じ重み。
-            cv_models: CV で同じモデルを fold ごとに学習したもの。
+            cv_models: CV で、同じ設定のモデルを fold ごとに学習したもの。
 
         Returns:
             学習済みのモデル（自分自身）。
@@ -84,7 +94,7 @@ class LGBM(Model):
         return self
 
     def predict(self, x: pd.DataFrame) -> np.ndarray:
-        """予測する。fit_with_validation のモデルは、最良の本数までの木だけを使う。
+        """予測する。fit_with_validation で学習したモデルは、early stopping で決まった本数までの木だけを使う。
 
         Args:
             x: 特徴量。
@@ -93,7 +103,9 @@ class LGBM(Model):
             目的変数の予測。
         """
         # best_iteration がない（fit() で作った）モデルでは、全部の木を使う
-        return self._trained_booster().predict(x, num_iteration=self.best_iteration)
+        return np.asarray(
+            self._trained_booster().predict(x, num_iteration=self.best_iteration)
+        )
 
     @property
     def best_iteration(self) -> int | None:
