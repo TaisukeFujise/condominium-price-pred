@@ -33,9 +33,26 @@ STATION_UNITS = {
     "駅": ["最寄駅：名称"],
     "駅×建築年": ["最寄駅：名称", "建築年_数値"],
 }
-# 件数の少ない単位の平均を、全体の平均に寄せる強さ（何件分の全体の平均を混ぜるか）
+# 件数の少ない単位の平均を、1 つ上の親の階層の平均に寄せる強さ（何件分の親の平均を混ぜるか）
 SMOOTHING = 3.0
 _N_SPLITS = 5
+# 親から子の順に平均を作るための階層定義。市区町村は親の事前分布としてだけ使い、列としては足さない
+_CITY_UNIT: dict[str, list[str]] = {"市区町村": ["市区町村名"]}
+_HIERARCHY_ORDER: tuple[str, ...] = (
+    "市区町村",
+    "地区",
+    "地区×建築年",
+    "建物",
+    "駅",
+    "駅×建築年",
+)
+_PARENT_UNIT: dict[str, str] = {
+    "地区": "市区町村",
+    "地区×建築年": "地区",
+    "建物": "地区×建築年",
+    "駅": "市区町村",
+    "駅×建築年": "駅",
+}
 
 
 class TargetEncodedLGBM(LGBM):
@@ -155,11 +172,12 @@ def _fit_tables(
         単位の名前 → 単位の文字列ごとの合計（sum）と件数（count）の表、と全体の平均。
     """
     y_array = np.asarray(y)
+    all_units = {**_CITY_UNIT, **units}
     tables = {
         name: pd.DataFrame({"key": _keys(x, columns), "y": y_array})
         .groupby("key")["y"]
         .agg(["sum", "count"])
-        for name, columns in units.items()
+        for name, columns in all_units.items()
     }
     return tables, float(y_array.mean())
 
@@ -170,23 +188,37 @@ def _add(
     prior: float,
     units: dict[str, list[str]],
 ) -> pd.DataFrame:
-    """単位ごとの平均（全体の平均に寄せたもの）と件数の列を足す。
+    """単位ごとの平均（1 つ上の親の階層の平均に寄せたもの）と件数の列を足す。
+
+    件数の少ない建物や地区を東京都全体の平均へ寄せると、都心の希少な物件が安く見え、
+    郊外の物件が高く見えるため、「全体 → 市区町村 → 地区/駅 → 地区×建築年/駅×建築年 → 建物」の順に
+    親の階層の平均へスムージングする。
 
     Args:
         x: 特徴量。
         tables: _fit_tables で数えた表。
-        prior: 全体の平均。件数 0 の単位はこの値になる。
+        prior: 全体の平均。
         units: 平均を作る単位。_fit_tables に渡したものと同じ。
 
     Returns:
         列を足した特徴量。
     """
     out = x.copy()
-    for name, columns in units.items():
-        keys = pd.Series(_keys(x, columns))
+    all_units = {**_CITY_UNIT, **units}
+    computed: dict[str, np.ndarray] = {}
+    for name in _HIERARCHY_ORDER:
+        if name not in all_units:
+            continue
+        keys = pd.Series(_keys(x, all_units[name]))
         total = keys.map(tables[name]["sum"]).fillna(0).to_numpy()
         count = keys.map(tables[name]["count"]).fillna(0).to_numpy()
-        out[f"TE_{name}"] = (total + prior * SMOOTHING) / (count + SMOOTHING)
+        parent_name = _PARENT_UNIT.get(name)
+        parent_prior = computed[parent_name] if parent_name in computed else prior
+        computed[name] = (total + parent_prior * SMOOTHING) / (count + SMOOTHING)
+    for name, columns in units.items():
+        keys = pd.Series(_keys(x, columns))
+        count = keys.map(tables[name]["count"]).fillna(0).to_numpy()
+        out[f"TE_{name}"] = computed[name]
         out[f"TE_{name}_件数"] = count
     return out
 
