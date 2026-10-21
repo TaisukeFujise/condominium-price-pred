@@ -14,6 +14,7 @@ from src.features import (
     building,
     district_latlon,
     group_aggregates,
+    layout,
     major_station,
 )
 
@@ -25,6 +26,7 @@ MAKERS: list[Callable[[pd.DataFrame], pd.DataFrame]] = [
     major_station.make,
     group_aggregates.make,
     building.make,
+    layout.make,
 ]
 
 
