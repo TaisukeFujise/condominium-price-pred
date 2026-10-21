@@ -153,6 +153,7 @@ s_cover, s_model, s_score, s_ai, s_good, s_bad, s_self = prs.slides
 s_story = duplicate(prs, s_model)
 s_team = duplicate(prs, s_story)
 s_score2 = duplicate(prs, s_score)
+s_probe = duplicate(prs, s_score2)
 selves = [s_self]
 for _ in MEMBERS[1:]:
     selves.append(duplicate(prs, selves[-1]))
@@ -225,7 +226,7 @@ text_box(
     9.32,
     0.35,
     [
-        "最終評価に選んだもの：提出 12（Public LB 0.18571、CV 0.18604 ※：seed 3 つの平均）と、予備の提出 10"
+        "相場の上昇を除いた㎡単価を 13 モデルで予測し、stacking でまとめたもの（Public LB 0.18571）"
     ],
     13,
     bold_first=True,
@@ -270,15 +271,13 @@ for el in body._element.iter(qn("a:spcPts")):
 text_box(
     s_model,
     0.34,
-    4.25,
+    4.5,
     4.75,
-    1.15,
+    0.85,
     [
         "注：stacking は、複数モデルの予測を別のモデルで組み合わせること",
         "注：TE（target encoding）は、学習データの価格を",
         "　 地区・駅・建物ごとに平均した特徴量（上の集計は価格を使わない）",
-        "注：LB probing は、予測をずらした提出の LB の変化から、",
-        "　 予測のずれを推定すること",
         "データ：国土交通省 不動産情報ライブラリの取引価格・",
         "　 成約価格情報（東京都の中古マンション等）を講義用に加工",
     ],
@@ -302,18 +301,18 @@ steps = [
     (3.74, 0.34, ["seed 3 つ（42・1・2）の予測を平均する"]),
     (
         4.26,
-        0.62,
+        0.5,
         [
-            "7〜9 月の予測が実際より 0.33% 高いと推定し、",
-            "test 全期間の予測を 0.33% 下げる",
-            "提出 11 の LB の変化から逆算した（式は 5 ページ）",
+            "7〜9 月の予測が 0.33% 高いと分かり、test 全期間を下げる",
+            "LB probing：Public LB の変化からずれを測った（7 ページ）",
         ],
     ),
     (
         4.94,
-        0.5,
+        0.62,
         [
-            "最終の予測：Public LB 0.18571",
+            "最終の予測：Public LB 0.18571、CV 0.18604 ※",
+            "CV は seed 3 つの平均",
             "補正に使ったため、Public は Private より良く出うる",
         ],
     ),
@@ -370,6 +369,15 @@ text_box(
     13,
     bold_first=True,
 )
+text_box(
+    s_story,
+    0.34,
+    1.33,
+    9.32,
+    0.25,
+    ["番号は提出した順（5 ページのグラフと同じ）"],
+    10.5,
+)
 STORY = [
     (
         "LightGBM のベースラインで、カテゴリの扱いと学習率を調整し、損失を Huber 損失に変えた",
@@ -396,7 +404,7 @@ STORY = [
         "提出 10 → 12：Public LB 0.18595 → 0.18571（提出 11 は補正量を測るための提出）",
     ),
 ]
-y = 1.45
+y = 1.65
 for i, (head, evidence) in enumerate(STORY):
     flow_box(s_story, 0.34, y, 9.32, 0.45, [head, evidence], sz=11)
     y += 0.45
@@ -500,21 +508,11 @@ fill_body(
             "10 を ※ の測り方で測ると 0.18614（seed 42）。Private は 10/22 0:00 の公開後に追記する",
             False,
         ),
-        (
-            0,
-            "LB probing：Public LB の採点対象は 7〜9 月の行と仮定し、11 で c＝1% 下げた LB の変化から、ずれ m を逆算した",
-            False,
-        ),
-        (
-            0,
-            "　 L₁² ＝ L₀² − 2cm ＋ c²（L₀＝提出 10 の 0.18595、L₁＝提出 11 の 0.18604）から m ＝ ＋0.33%。10〜3 月も同じずれと仮定",
-            False,
-        ),
     ],
     sizes=(11, 10.5, 10),
 )
 desc = placeholder(s_score, 1)
-desc.top, desc.height = Inches(0.82), Inches(1.4)
+desc.top, desc.height = Inches(0.85), Inches(0.9)
 for el in desc._element.iter(qn("a:spcPts")):
     el.set("val", "0")
 table = next(sh for sh in s_score.shapes if sh.has_table)
@@ -527,9 +525,9 @@ data.add_series("Public LB", [lb for _, _, lb in SUBMISSIONS], number_format="0.
 chart = s_score.shapes.add_chart(
     XL_CHART_TYPE.LINE_MARKERS,
     Inches(0.34),
-    Inches(2.3),
+    Inches(1.85),
     Inches(6.0),
-    Inches(3.1),
+    Inches(3.5),
     data,
 ).chart
 chart.font.size = Pt(10)
@@ -588,7 +586,7 @@ for i in (9, 11):
     label.font.size = Pt(9)
 last_cv.format.line.width = Pt(1.5)
 
-box = s_score.shapes.add_textbox(Inches(6.5), Inches(2.3), Inches(3.2), Inches(3.1))
+box = s_score.shapes.add_textbox(Inches(6.5), Inches(1.85), Inches(3.2), Inches(3.5))
 txBody = box._element.find(qn("p:txBody"))
 for p in txBody.findall(qn("a:p")):
     txBody.remove(p)
@@ -703,6 +701,68 @@ fill_table(
     head_sz=13.5,
     row_h=0.25,
     head_h=0.5,
+)
+
+# ---- LB probing：Public LB の変化から予測のずれを測る -------------------------
+table = next(sh for sh in s_probe.shapes if sh.has_table)
+table._element.getparent().remove(table._element)
+text_box(
+    s_probe,
+    0.34,
+    1.0,
+    9.32,
+    0.35,
+    [
+        "LB probing：Public LB の変化から、7〜9 月の予測が 0.33% 高いと分かり、test 全期間を下げた"
+    ],
+    13,
+    bold_first=True,
+)
+PROBE = [
+    ["提出 10（10/20）", "Public LB 0.18595（L₀）"],
+    [
+        "提出 11：10 の 7〜9 月の予測だけを 1% 下げて提出",
+        "Public LB 0.18604（L₁）：少し悪くなった",
+    ],
+    [
+        "2 つの LB から、7〜9 月の予測のずれ m を逆算",
+        "L₁² ＝ L₀² − 2cm ＋ c²（c ＝ 1%）から m ＝ ＋0.33%",
+    ],
+    [
+        "提出 12：test 全期間の予測を 0.33% 下げて提出",
+        "Public LB 0.18571（成約の重み・TE の平滑化も追加）",
+    ],
+]
+y = 1.55
+for i, lines in enumerate(PROBE):
+    flow_box(s_probe, 0.34, y, 4.6, 0.62, lines, sz=11)
+    y += 0.62
+    if i < len(PROBE) - 1:
+        down_triangle(s_probe, 0.34 + 4.6 / 2, y + 0.03)
+        y += 0.2
+probe_body = placeholder(s_probe, 1)
+probe_body.left, probe_body.top, probe_body.width, probe_body.height = (
+    Inches(5.2),
+    Inches(1.5),
+    Inches(4.46),
+    Inches(3.85),
+)
+fill_body(
+    probe_body,
+    [
+        (0, "置いた仮定", True),
+        (1, "Public LB は test の 7〜9 月の行だけで採点される", False),
+        (2, "Public は test の約 37%、7〜9 月の行は 37.2%", False),
+        (1, "10〜3 月の予測も、7〜9 月と同じだけ高い", False),
+        (0, "式の読み方", True),
+        (1, "下げた量 c が 2m より大きいと LB は悪くなる", False),
+        (2, "提出 11 の悪化の幅から m を求められる", False),
+        (0, "注意", True),
+        (1, "補正に Public LB を使った", False),
+        (2, "Public は Private より良く出うる", False),
+    ],
+    sizes=(13, 12, 11.5),
+    line=110,
 )
 
 # ---- AI の使い方 -------------------------------------------------------------
