@@ -1,11 +1,13 @@
 """学習データの選択から後処理まで（工程 3〜8）をつなぎ、価格を予測する。
 
-CV（fit_and_predict_valid）と本番（fit_and_predict_test）の違いは、繰り返しの回数（木の本数など）の決め方と、
-混ぜ方（2 段目）をいつ渡すか。モデルはクラスのリスト（main.py の MODELS）で受け取り、それぞれの予測を ensemble.blend で混ぜる。
-CV では 2 段目を全 fold の予測がそろってから学習するので、fit_and_predict_valid は 2 段目の入力を返し、
-混ぜて後処理するのは main.py から blend_and_adjust を呼んで行う。本番は学習済みの 2 段目を先に受け取る。
-それ以外の工程は _training_data・_stack_inputs・blend_and_adjust にまとめ、両方が同じものを通るようにする。
-どちらも、渡された学習データ（CV では fold の学習データ）だけを使って動く。
+CV 用の fit_and_predict_valid と、本番用の fit_and_predict_test がある。
+どちらも、渡された学習データ（CV では fold の学習データ）だけを使う。
+
+CV 用と本番用で違うのは、次の 2 点だけ。それ以外の工程は同じ関数を通るので、CV と本番で処理がずれない。
+- 繰り返しの回数（木の本数など）：CV 用は検証データのスコアで決める（early stopping）。本番用は CV の結果から決める。
+- 2 段目（予測の混ぜ方。src/ensemble.py）：CV 用は 2 段目の入力を返すだけで、混ぜない。
+  CV の 2 段目は、全 fold の予測がそろってから学習するため。混ぜて後処理するのは、main.py が blend_and_adjust を呼んで行う。
+  本番用は、学習済みの 2 段目を受け取って、混ぜて後処理するところまで行う。
 """
 
 from collections.abc import Callable
@@ -24,9 +26,10 @@ def fit_and_predict_valid(
     features: list[str],
     model_classes: list[Callable[[], Model]],
 ) -> tuple[pd.DataFrame, list[Model]]:
-    """CV 用。va のスコアで繰り返しの回数を決め（early stopping）、va をモデルごとに予測する。
+    """CV 用。モデルごとに tr で学習して va を予測し、2 段目の入力を作る。
 
-    2 段目は前の期間の fold の予測から学習するので、ここでは混ぜない（blend_and_adjust で混ぜる）。
+    繰り返しの回数は、va のスコアで決める（early stopping）。
+    予測はここでは混ぜない。混ぜるのは、main.py が 2 段目を学習してから blend_and_adjust で行う。
 
     Args:
         tr: fold の学習データ。
@@ -35,22 +38,23 @@ def fit_and_predict_valid(
         model_classes: 使うモデルのクラス（main.py の MODELS）。
 
     Returns:
-        va の 2 段目の入力（ensemble.make_inputs）と、学習済みのモデル。best_iteration に繰り返しの回数が入る。
+        va の 2 段目の入力（ensemble.make_inputs）と、学習済みのモデル。
+        モデルの best_iteration に、early stopping で決まった繰り返しの回数が入る。
     """
     tr_used, weight, trend = _training_data(tr)
-    models: list[Model] = []
+    fold_models: list[Model] = []
     for model in _new_models(model_classes):
-        x_tr, y_tr, weight_tr = _rows(
+        x_tr, y_tr, weight_tr = _apply_subset(
             model,
             tr_used[features],
             target.to_target(tr_used, trend, model.per_area),
             weight,
         )
-        x_va, y_va, _ = _rows(
+        x_va, y_va, _ = _apply_subset(
             model, va[features], target.to_target(va, trend, model.per_area), None
         )
-        models.append(model.fit_with_validation(x_tr, y_tr, x_va, y_va, weight_tr))
-    return _stack_inputs(models, va, features, trend), models
+        fold_models.append(model.fit_with_validation(x_tr, y_tr, x_va, y_va, weight_tr))
+    return _stack_inputs(fold_models, va, features, trend), fold_models
 
 
 def fit_and_predict_test(
@@ -61,36 +65,39 @@ def fit_and_predict_test(
     cv_models: list[list[Model]],
     stacker: lgb.Booster,
 ) -> tuple[np.ndarray, list[Model]]:
-    """本番用。train 全体で学習し、test を予測する。
+    """本番用。モデルごとに train 全体で学習して test を予測し、2 段目で混ぜて後処理する。
 
     Args:
         train: コンペの学習データ全体。
         test: コンペのテストデータ。
         features: モデルに入れる列名の一覧。
         model_classes: 使うモデルのクラス（main.py の MODELS）。
-        cv_models: [i] は model_classes[i] を CV の fold ごとに学習したもの。
-            本番は検証データがないので、繰り返しの回数などはここから決める。
+        cv_models: [i][fold] は、model_classes[i] を CV のその fold で学習したもの。
+            本番は検証データがなく early stopping できないので、繰り返しの回数などはここから決める。
         stacker: 2 段目。CV の全 fold の予測から学習したもの。
 
     Returns:
         test の予測価格（円）と、学習済みのモデル。
     """
-    tr_used, weight, trend = _training_data(train)
-    models: list[Model] = []
+    train_used, weight, trend = _training_data(train)
+    test_models: list[Model] = []
     for model, cv in zip(_new_models(model_classes), cv_models, strict=True):
-        x, y, weight_used = _rows(
+        x_train, y_train, weight_train = _apply_subset(
             model,
-            tr_used[features],
-            target.to_target(tr_used, trend, model.per_area),
+            train_used[features],
+            target.to_target(train_used, trend, model.per_area),
             weight,
         )
-        models.append(model.fit(x, y, weight_used, cv))
-    inputs = _stack_inputs(models, test, features, trend)
-    return blend_and_adjust(inputs, stacker, test, train, features), models
+        test_models.append(model.fit(x_train, y_train, weight_train, cv))
+    test_stack_inputs = _stack_inputs(test_models, test, features, trend)
+    return (
+        blend_and_adjust(test_stack_inputs, stacker, test, train, features),
+        test_models,
+    )
 
 
 def blend_and_adjust(
-    inputs: pd.DataFrame,
+    stack_inputs: pd.DataFrame,
     stacker: lgb.Booster | None,
     pred_rows: pd.DataFrame,
     tr: pd.DataFrame,
@@ -99,17 +106,17 @@ def blend_and_adjust(
     """モデルごとの予測を 2 段目で混ぜ、後処理をかける（工程 7・8）。
 
     Args:
-        inputs: pred_rows の 2 段目の入力（ensemble.make_inputs）。
-        stacker: 2 段目。None なら土台（全行で学習したモデルの log の平均）のまま。
+        stack_inputs: pred_rows の 2 段目の入力（ensemble.make_inputs）。
+        stacker: 2 段目。None なら混ぜずに、土台（全行で学習したモデルの予測の log の平均）を使う。
         pred_rows: 予測した行。
-        tr: 学習データ（CV では fold の学習データ）。後処理に渡す。
+        tr: 学習データ（CV では fold の学習データ）。学習に使う行を選んで（selection.select）から後処理に渡す。
         features: モデルに入れる列名の一覧。
 
     Returns:
         pred_rows の予測価格（円）。
     """
     tr_used, _ = selection.select(tr)
-    price = ensemble.blend(inputs, stacker)
+    price = ensemble.blend(stack_inputs, stacker)
     return postprocess.adjust(price, pred_rows, tr_used, features)
 
 
@@ -128,9 +135,10 @@ def _new_models(model_classes: list[Callable[[], Model]]) -> list[Model]:
 def _training_data(
     tr: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.Series | None, target.Trend]:
-    """学習に使う行・重み・相場の指数を決める（工程 3・4）。
+    """学習に使う行と重み（工程 3）、相場の指数（工程 4）を決める。
 
-    目的変数はモデルごとに違ってよい（Model.per_area）ので、ここでは作らず、モデルごとに to_target で作る。
+    目的変数はここでは作らない。㎡単価か総額か（Model.per_area）がモデルごとに違うので、
+    各モデルを学習する直前に target.to_target で作る。
 
     Args:
         tr: 学習データ。
@@ -143,7 +151,7 @@ def _training_data(
     return tr_used, weight, trend
 
 
-def _rows(
+def _apply_subset(
     model: Model, x: pd.DataFrame, y: pd.Series, weight: pd.Series | None
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series | None]:
     """モデルが学習に使う行（Model.subset）だけに絞る。
@@ -169,7 +177,7 @@ def _stack_inputs(
     features: list[str],
     trend: target.Trend,
 ) -> pd.DataFrame:
-    """モデルごとに予測して円に戻し、2 段目の入力にする。
+    """モデルごとに pred_rows を予測して円に戻し、2 段目の入力を作る。
 
     Args:
         models: 学習済みのモデル。

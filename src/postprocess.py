@@ -1,7 +1,7 @@
-"""後処理。予測した価格（円）を補正する。
+"""後処理（工程 8）。混ぜた予測の価格（円）を補正する。今は補正していない（adjust）。
 
-CV では検証データの予測にも同じ補正をかけるので、補正の効果も CV で測れる。
-補正に使ってよいのは学習データ（tr）の情報だけ（CV では、その fold の学習データだけ）。
+CV でも検証データの予測に同じ補正をかけるので、補正の効果を CV で測れる。
+補正に使ってよいのは、学習データ（tr）の情報だけ。CV では fold の学習データになる。
 """
 
 import numpy as np
@@ -14,11 +14,10 @@ from src.models.lgbm import LGBM
 
 
 def _fit_calibrator(tr: pd.DataFrame, features: list[str]) -> IsotonicRegression:
-    """予測価格の log から実際の価格の log への isotonic 較正を、学習データの中だけで学習する。
+    """予測価格の log を実際の価格の log に対応させる isotonic 較正を、学習データだけで学習する。
 
-    tr の中にさらに内側のホールドアウト（直近 3 四半期）を作り、そこでの予測と実際の値を対応させる。
-    安い物件を過大予測し、高い物件を過小予測するという価格帯による系統的なズレ
-    （regression to the mean）を、この対応表で補正する。
+    tr を時系列 CV と同じ方法で分け、いちばん新しい検証期間（直近 3 四半期）で、予測と実際の値を対応させる。
+    この対応表で、安い物件を高く、高い物件を安く予測するずれ（平均への回帰）を補正する。
 
     Args:
         tr: そのときの学習データ（CV では fold の学習データ、本番では train 全体）。
@@ -71,10 +70,10 @@ def _calibrate(price: np.ndarray, tr: pd.DataFrame, features: list[str]) -> np.n
 def adjust(
     price: np.ndarray, pred_rows: pd.DataFrame, tr: pd.DataFrame, features: list[str]
 ) -> np.ndarray:
-    """予測した価格を補正する。今は何もしない。
+    """予測した価格を補正する。今は何もせず、そのまま返す。
 
-    isotonic 較正（`_calibrate`）は CV では良くなったが、Public LB では悪くなったので使っていない
-    （#22 のコメント）。使うときは `return _calibrate(price, tr, features)` に戻す。
+    isotonic 較正（_calibrate）は使わない（CV は良くなるが、Public LB で悪くなった。#22）。
+    試すときは、戻り値を `_calibrate(price, tr, features)` にする。
 
     Args:
         price: 予測した価格（円）。
