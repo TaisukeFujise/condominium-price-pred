@@ -16,6 +16,8 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_MARKER_STYLE
+from pptx.enum.shapes import MSO_SHAPE
+from pptx.enum.text import MSO_ANCHOR
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
@@ -35,9 +37,17 @@ def sub(parent, tag, **attrs):
     return el
 
 
-def run(p, text, sz, b=False):
+# 本文の枠はテンプレートのマスターが Noto Sans JP を持つので書体を書かない。
+# 新しく足す図形（表・図の箱・グラフ・一覧）はテーマの既定（Arial）になるので、本文にそろえて書く
+FACE = "Noto Sans JP"
+
+
+def run(p, text, sz, b=False, face=None):
     r = sub(p, "a:r")
-    sub(r, "a:rPr", lang="ja-JP", sz=int(sz * 100), b=1 if b else 0)
+    rPr = sub(r, "a:rPr", lang="ja-JP", sz=int(sz * 100), b=1 if b else 0)
+    if face:
+        for tag in ("a:latin", "a:ea", "a:cs"):
+            sub(rPr, tag, typeface=face)
     sub(r, "a:t").text = text
 
 
@@ -69,7 +79,7 @@ def set_cell(tc, text, sz, b=False):
         p = sub(txBody, "a:p")
         pPr = sub(p, "a:pPr", marL=0, indent=0, algn="l")
         sub(pPr, "a:buNone")
-        run(p, line, sz, b)
+        run(p, line, sz, b, FACE)
     tcPr = tc.find(qn("a:tcPr"))
     for k in ("marT", "marB"):
         tcPr.set(k, str(int(0.03 * EMU)))
@@ -137,80 +147,176 @@ selves = [s_self]
 for _ in MEMBERS[1:]:
     selves.append(duplicate(prs, selves[-1]))
 
-# ---- 最終モデルの中身 -------------------------------------------------------
+# ---- 最終モデルの中身：左に前提の箇条、右に予測ができるまでの流れの図 ---------
+INK = RGBColor(0x26, 0x26, 0x26)
+LINE = RGBColor(0x59, 0x59, 0x59)
+
+
+def text_box(slide, x, y, w, h, lines, sz, bold_first=False, align="l"):
+    """塗りなし・枠なしの文字の箱を置き、1 行ずつ段落にする。"""
+    box = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = box.text_frame
+    tf.word_wrap = True
+    txBody = box._element.find(qn("p:txBody"))
+    for p in txBody.findall(qn("a:p")):
+        txBody.remove(p)
+    for i, line in enumerate(lines):
+        p = sub(txBody, "a:p")
+        sub(sub(p, "a:pPr", marL=0, indent=0, algn=align), "a:buNone")
+        run(p, line, sz, bold_first and i == 0, FACE)
+    return box
+
+
+def flow_box(slide, x, y, w, h, lines, sz=10.5):
+    """流れの図の 1 段。塗りなしの細い枠（規約：塗りのない箱だけ枠線を付ける）。"""
+    shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h)
+    )
+    shape.fill.background()
+    shape.line.color.rgb = LINE
+    shape.line.width = Pt(0.75)
+    shape.shadow.inherit = False
+    tf = shape.text_frame
+    tf.word_wrap = True
+    tf.margin_left = tf.margin_right = Inches(0.06)
+    tf.margin_top = tf.margin_bottom = Inches(0.02)
+    tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    txBody = shape._element.find(qn("p:txBody"))
+    for p in txBody.findall(qn("a:p")):
+        txBody.remove(p)
+    for i, line in enumerate(lines):
+        p = sub(txBody, "a:p")
+        sub(sub(p, "a:pPr", marL=0, indent=0, algn="ctr"), "a:buNone")
+        run(p, line, sz, i == 0, FACE)
+        p.find(qn("a:r")).find(qn("a:rPr")).insert(
+            0,
+            etree.fromstring(
+                f'<a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:srgbClr val="{INK}"/></a:solidFill>'
+            ),
+        )
+
+
+def down_triangle(slide, cx, y):
+    """段と段の間の下向きの三角（読む向きと同じ向き）。"""
+    w, h = 0.22, 0.12
+    tri = slide.shapes.add_shape(
+        MSO_SHAPE.FLOWCHART_MERGE, Inches(cx - w / 2), Inches(y), Inches(w), Inches(h)
+    )
+    tri.fill.solid()
+    tri.fill.fore_color.rgb = LINE
+    tri.line.fill.background()
+    tri.shadow.inherit = False
+
+
+text_box(
+    s_model,
+    0.34,
+    1.0,
+    9.32,
+    0.35,
+    ["最終評価に選んだもの：10/21 の提出（Public LB 0.18571、CV 0.18604 ※）"],
+    13,
+    bold_first=True,
+)
+body = placeholder(s_model, 1)
+body.left, body.top, body.width, body.height = (
+    Inches(0.34),
+    Inches(1.4),
+    Inches(4.75),
+    Inches(3.95),
+)
 fill_body(
-    placeholder(s_model, 1),
+    body,
     [
+        (0, "前処理：面積・建築年・駅距離を数値に直した", False),
+        (0, "目的変数：log(㎡単価) − 四半期ごとの相場の指数", False),
+        (1, "test の時期は、直近 4 四半期の傾きで延ばした", False),
         (
             0,
-            "最終評価に選んだもの：10/21 の提出（Public LB 0.18571、CV 0.18604 ※）",
-            True,
-        ),
-        (
-            1,
-            "前処理：面積・建築年・駅距離の文字列を数値に直し、カテゴリの欠損を「欠損」という値にまとめた",
-            False,
-        ),
-        (
-            1,
-            "目的変数：log(㎡単価) から、学習データで作った四半期ごとの相場の指数を引いた値",
-            False,
-        ),
-        (2, "test の時期の指数は、直近 4 四半期の傾きを直線で延ばして求めた", False),
-        (
-            1,
-            "特徴量：主要駅までの距離、地区・駅・建物ごとの件数や築年数の集計、一部屋あたりの面積",
-            False,
-        ),
-        (
-            1,
-            "モデル：1 段目の 13 モデルの予測を、2 段目の LightGBM で混ぜた（stacking）",
-            False,
-        ),
-        (
-            2,
-            "土台：LightGBM（㎡単価・総額）・CatBoost・線形回帰＋LightGBM の 4 つの予測の平均",
-            False,
-        ),
-        (
-            2,
-            "2 段目の入力にだけ使う：特定の行で学ぶ LightGBM 5 つ、ヘドニック回帰、TE 付きの LightGBM 3 つ",
-            False,
-        ),
-        (
-            1,
-            "学習データ：成約価格情報の行の重みを 1.5 倍にした（test の 67% がこの種類の行）",
-            False,
-        ),
-        (
-            1,
-            "仕上げ：seed 3 つの予測を平均し、予測が 0.33% 高めだった分だけ、全体を下げた",
-            False,
-        ),
-        (
-            2,
-            "0.33% は 2025年7〜9月の予測だけ 1% 下げた提出（LB probing）で測ったので、Private の時期に当てはまるとは限らない",
+            "特徴量：主要駅までの距離、地区・駅・建物ごとの集計、一部屋あたりの面積",
             False,
         ),
         (
             0,
-            "手元の検証方法：過去で学習し、直後の 3 四半期を当てる時系列の 3 fold",
-            True,
-        ),
-        (
-            1,
-            "※ 10/19 から、2 段目は採点する fold より前の fold だけで学習し、最も古い fold は 1 段目だけで採点した",
+            "学習データ：成約価格情報の行を 1.5 倍に重くした",
             False,
         ),
+        (1, "test の 67% がこの種類の行", False),
+        (0, "検証：過去で学習し、直後の 3 四半期を当てる 3 fold", False),
+        (1, "※ 10/19 から、2 段目は前の fold だけで学習した", False),
         (
-            1,
-            "TE（target encoding）：地区・駅・建物ごとの過去の価格の平均を特徴量にすること",
+            0,
+            "TE（target encoding）：地区・駅・建物ごとの過去の価格の平均を、特徴量にすること",
             False,
         ),
     ],
-    sizes=(14, 12.5, 12),
-    line=105,
+    sizes=(12.5, 11.5, 11.5),
+    line=100,
 )
+for el in body._element.iter(qn("a:spcPts")):
+    if el.get("val") == "600":
+        el.set("val", "500")
+
+X0, W = 5.3, 4.36
+text_box(s_model, X0, 1.4, W, 0.3, ["予測ができるまでの流れ"], 11.5, bold_first=True)
+steps = [
+    (1.72, 0.36, ["1 段目：13 モデルを学習し、それぞれ予測する"]),
+    (None, 0.86, None),  # 2 つの箱を横に並べる段
+    (
+        3.06,
+        0.5,
+        [
+            "2 段目：LightGBM が土台からのずれを予測する",
+            "面積・築年数などを見て、全体の水準は動かさない",
+        ],
+    ),
+    (3.74, 0.34, ["seed 3 つ（42・1・2）の予測を平均する"]),
+    (
+        4.26,
+        0.5,
+        [
+            "予測が 0.33% 高めだった分だけ全体を下げる",
+            "Public LB の 7〜9 月で測った値（LB probing）",
+        ],
+    ),
+    (4.94, 0.34, ["最終の予測：Public LB 0.18571"]),
+]
+y = 1.72
+for i, (_top, h, lines) in enumerate(steps):
+    if lines is None:
+        half = (W - 0.16) / 2
+        flow_box(
+            s_model,
+            X0,
+            y,
+            half,
+            h,
+            [
+                "土台：4 モデルの予測の平均",
+                "LightGBM 2 つ・CatBoost",
+                "線形回帰＋LightGBM",
+            ],
+            sz=10,
+        )
+        flow_box(
+            s_model,
+            X0 + half + 0.16,
+            y,
+            half,
+            h,
+            [
+                "2 段目の入力：9 モデル",
+                "特定の行の LightGBM 5 つ",
+                "ヘドニック回帰・TE 付き 3 つ",
+            ],
+            sz=10,
+        )
+    else:
+        flow_box(s_model, X0, y, W, h, lines, sz=10.5 if len(lines) == 1 else 10)
+    y += h
+    if i < len(steps) - 1:
+        down_triangle(s_model, X0 + W / 2, y + 0.03)
+        y += 0.18
 
 # ---- 経緯・各自の貢献・再現性 -------------------------------------------------
 fill_body(
@@ -332,6 +438,7 @@ chart = s_score.shapes.add_chart(
     data,
 ).chart
 chart.font.size = Pt(10)
+chart.font.name = FACE
 chart.has_legend = True
 chart.legend.position = XL_LEGEND_POSITION.TOP
 chart.legend.include_in_layout = False
@@ -379,14 +486,14 @@ for p in txBody.findall(qn("a:p")):
     txBody.remove(p)
 p = sub(txBody, "a:p")
 sub(sub(p, "a:pPr", marL=0, indent=0), "a:buNone")
-run(p, "提出の中身", 11.5, True)
+run(p, "提出の中身", 11.5, True, FACE)
 for name, _, _ in SUBMISSIONS:
     p = sub(txBody, "a:p")
     pPr = sub(p, "a:pPr", marL=274320, indent=-274320)
     sub(sub(pPr, "a:spcBef"), "a:spcPts", val=100)
     sub(pPr, "a:buFont", typeface="Arial")
     sub(pPr, "a:buAutoNum", type="arabicPeriod")
-    run(p, name, 10.5)
+    run(p, name, 10.5, False, FACE)
 
 # ---- スコアの推移（CV だけで判断したもの）----------------------------------
 fill_body(
@@ -421,7 +528,7 @@ fill_table(
             "—",
             "不採用",
         ],
-        ["同じ建物とみなした物件ごとの集計", "0.18944 → 0.18872", "—", "—", "採用"],
+        ["同じ建物とみなした物件の集計", "0.18944 → 0.18872", "—", "—", "採用"],
         [
             "2 段目の入力に 5 モデルを足す",
             "0.18765 → 0.18680",
@@ -445,7 +552,7 @@ fill_table(
             "採用、大久保の PC の値",
         ],
         [
-            "相場から外れた取引を学習から外す",
+            "相場から外れた取引を外す",
             "0.0002〜0.0018 悪化",
             "—",
             "—",
