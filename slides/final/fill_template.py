@@ -101,6 +101,10 @@ def fill_table(frame, widths, rows, y, sz, head_sz, row_h, head_h=0.3):
     head.set("h", str(int(head_h * EMU)))
     for tc in head.findall(qn("a:tc")):
         txt = "".join(t.text or "" for t in tc.iter(qn("a:t")))
+        # 見出しの文言はそのまま、折り返す位置だけ意味の切れ目にそろえる
+        txt = txt.replace("試したこと（", "試したこと\n（").replace(
+            "、ずれ", "、\nずれ"
+        )
         set_cell(tc, txt, head_sz, True)
     for cells in rows:
         tr = copy.deepcopy(blank)
@@ -142,6 +146,7 @@ def set_title(slide, text):
 prs = Presentation(sys.argv[1])
 s_cover, s_model, s_score, s_ai, s_good, s_bad, s_self = prs.slides
 s_story = duplicate(prs, s_model)
+s_team = duplicate(prs, s_story)
 s_score2 = duplicate(prs, s_score)
 selves = [s_self]
 for _ in MEMBERS[1:]:
@@ -233,11 +238,8 @@ fill_body(
         (0, "前処理：面積・築年数・駅距離を数値に直した", False),
         (0, "目的変数：log(㎡単価) − 四半期ごとの相場（log）", False),
         (1, "test の時期は、直近 4 四半期の傾きで延ばした", False),
-        (
-            0,
-            "特徴量：主要駅までの距離、地区・駅・建物ごとの集計、一部屋あたりの面積",
-            False,
-        ),
+        (0, "特徴量：主要駅までの距離、一部屋あたりの面積", False),
+        (1, "地区・駅・建物ごとの価格の集計", False),
         (
             0,
             "学習データ：成約価格情報（実際に売れた価格）の行の重みを 1.5 倍にした",
@@ -250,11 +252,6 @@ fill_body(
             False,
         ),
         (1, "※ 10/19 から、2 段目は前の fold だけで学習した", False),
-        (
-            0,
-            "TE（target encoding）：地区・駅・建物ごとの過去の価格の平均を、特徴量にすること",
-            False,
-        ),
     ],
     sizes=(12.5, 11.5, 11.5),
     line=100,
@@ -262,6 +259,21 @@ fill_body(
 for el in body._element.iter(qn("a:spcPts")):
     if el.get("val") == "600":
         el.set("val", "500")
+
+text_box(
+    s_model,
+    0.34,
+    4.5,
+    4.75,
+    0.8,
+    [
+        "注：TE（target encoding）は、",
+        "　 地区・駅・建物ごとの過去の価格の平均を特徴量にすること",
+        "データ：国土交通省 不動産情報ライブラリの取引価格・",
+        "　 成約価格情報（東京都の中古マンション等）を講義用に加工",
+    ],
+    10,
+)
 
 X0, W = 5.3, 4.36
 text_box(s_model, X0, 1.4, W, 0.3, ["予測ができるまでの流れ"], 11.5, bold_first=True)
@@ -333,36 +345,54 @@ for i, (_top, h, lines) in enumerate(steps):
         down_triangle(s_model, X0 + W / 2, y + 0.03)
         y += 0.13
 
-# ---- 経緯・各自の貢献・再現性 -------------------------------------------------
+# ---- そのモデルに至った経緯：分かれ目を上から順に並べた流れの図 ---------------
+story_body = placeholder(s_story, 1)
+story_body._element.getparent().remove(story_body._element)
+text_box(
+    s_story,
+    0.34,
+    1.0,
+    9.32,
+    0.35,
+    ["目的変数の作り方を変え、stacking に移ってから、小さな改善を積み上げた"],
+    13,
+    bold_first=True,
+)
+STORY = [
+    ("目的変数を㎡単価にした", "CV 0.20004 → 0.19845（提出 3 の構成から）"),
+    (
+        "isotonic 回帰による予測の補正をやめた：CV は良くなったが、Public LB は悪くなった",
+        "提出 3 → 4：CV 0.20004 → 0.19727、Public LB 0.19914 → 0.20059",
+    ),
+    (
+        "相場の指数を引いた：決定木は学習期間より先の値上がりを表せないため",
+        "提出 3 → 5：Public LB 0.19914 → 0.19709",
+    ),
+    (
+        "4 モデルの単純平均から stacking に変え、建物ごとの集計を足した",
+        "提出 8 → 9：Public LB 0.19251 → 0.18770",
+    ),
+    (
+        "2 段目の入力と TE の改良を重ねた：1 回の改善は 0.0001〜0.0009 にとどまった",
+        "提出 9 → 10：Public LB 0.18770 → 0.18595",
+    ),
+    (
+        "成約価格情報の重みと TE の平滑化を足し、LB probing で予測のずれを補正した",
+        "提出 10 → 12：Public LB 0.18595 → 0.18571（ずれは提出 11 で測った）",
+    ),
+]
+y = 1.5
+for i, (head, evidence) in enumerate(STORY):
+    flow_box(s_story, 0.34, y, 9.32, 0.47, [head, evidence], sz=11)
+    y += 0.47
+    if i < len(STORY) - 1:
+        down_triangle(s_story, 0.34 + 9.32 / 2, y + 0.02)
+        y += 0.15
+
+# ---- 各自の貢献・再現性 -------------------------------------------------------
 fill_body(
-    placeholder(s_story, 1),
+    placeholder(s_team, 1),
     [
-        (0, "そのモデルに至った経緯（主な分かれ目）", True),
-        (
-            1,
-            "目的変数を㎡単価にし、相場の指数を引いた：決定木は学習期間より先の値上がりを表せないため",
-            False,
-        ),
-        (
-            1,
-            "isotonic 回帰による予測の補正をやめた：CV は良くなったが、Public LB は補正なしより悪くなった",
-            False,
-        ),
-        (
-            1,
-            "4 モデルの単純平均から stacking に変えた：以後は 2 段目の入力を足して改善を積み上げた",
-            False,
-        ),
-        (
-            1,
-            "後半は 2 段目の入力と TE の改良を重ねた：1 回の改善は 0.0001〜0.0009 にとどまった",
-            False,
-        ),
-        (
-            1,
-            "最後に LB probing で、test の時期の予測のずれを Public LB から測って補正した",
-            False,
-        ),
         (0, "各自の取り組みと、最終モデルへの貢献", True),
         (
             1,
@@ -401,8 +431,8 @@ fill_body(
             False,
         ),
     ],
-    sizes=(14, 12.5, 12),
-    line=100,
+    sizes=(15, 14, 14),
+    line=135,
 )
 
 # ---- スコアの推移（提出したもの）：折れ線グラフ ------------------------------
@@ -419,14 +449,14 @@ SUBMISSIONS = [
     ("6 モデルの stacking、建物ごとの集計など", 0.18765, 0.18770),
     ("13 モデル、TE、seed 平均", 0.18531, 0.18595),
     ("探り：10 の 7〜9 月だけ 1% 下げた", None, 0.18604),
-    ("最終の提出 ※", 0.18604, 0.18571),
+    ("最終：10 に 2 つの改良と補正 ※", 0.18604, 0.18571),
 ]
 fill_body(
     placeholder(s_score, 1),
     [
         (
             0,
-            "isotonic の回（4）と、CV の測り方を変えた最終（12）を除き、CV と Public LB は同じ向きに動いた",
+            "CV のある提出では、isotonic の回（4）と測り方を変えた 12 を除き、CV と Public LB は同じ向きに動いた",
             True,
         ),
         (
@@ -521,7 +551,7 @@ fill_body(
     [
         (
             0,
-            "提出せずに CV だけで採否を決めた主な実験：手元の検証スコアは「その時点の構成の CV → 変えた後の CV」",
+            "提出せずに CV で採否を決めた実験（Public・Private は未提出）：スコアは「変える前の CV → 変えた後の CV」",
             False,
         ),
         (
@@ -576,7 +606,7 @@ fill_table(
             "0.0002〜0.0018 悪化",
             "—",
             "—",
-            "不採用、test にも外れ値",
+            "不採用、CV が悪化",
         ],
         [
             "近くの地価公示の地点の価格",
@@ -604,19 +634,21 @@ fill_body(
             "Claude Code：コード・PR の本文・レビューを任せ、夜間は実験を複数のエージェントに分担させた",
             False,
         ),
-        (1, "Fable（藤瀬）：残った誤差の分析と、LB probing の設計", False),
+        (1, "Fable（藤瀬）：残った誤差の分析と、LB probing の設計を任せた", False),
         (1, "Gemini（大久保）：AI が夜間にまとめた PR を検証した", False),
         (0, "AI が誤っていたこと", True),
         (
             1,
-            "AI は「安い価格帯かどうか」を当てる分類器で CV が良くなったと報告した：2 段目の入力に正解の情報が漏れていて、入力を直すと改善が消えた",
+            "AI は「安い価格帯かどうか」を当てる分類器で、CV が良くなったと報告した",
             False,
         ),
+        (2, "2 段目の入力に正解の情報が漏れていて、入力を直すと改善が消えた", False),
         (
             1,
-            "AI が、別のセッションで書き換えられた PR に気づかず、古い手順の LB probing の提出を案内した：人が PR の本文を読み直して気づいた",
+            "AI が、別のセッションで書き換えられた PR に気づかず、古い手順の提出を案内した",
             False,
         ),
+        (2, "人が PR の本文を読み直して気づいた", False),
         (0, "AI の提案で採用したもの・却下したもの", True),
         (1, "採用：stacking、TE 付きのモデル、seed 平均、LB probing", False),
         (
@@ -624,7 +656,7 @@ fill_body(
             "却下：相場から外れた取引を外す案（3 つのしきい値すべてで CV が悪化）",
             False,
         ),
-        (0, "AI への指示ファイルに書いて効いたこと", True),
+        (0, "AI への指示ファイルに書いたルール", True),
         (
             1,
             "テスト期間の取引データを見ない、価格を使う特徴量は fold ごとに作る、重い計算は同時に 1 本だけ実行する",
