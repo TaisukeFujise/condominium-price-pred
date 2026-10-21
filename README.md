@@ -1,128 +1,49 @@
 # condominium-resale-price-pred
 
-Kaggle コンペ [`utokyo-mlapp-2026-ex1`](https://www.kaggle.com/competitions/utokyo-mlapp-2026-ex1)（中古マンション価格予測）用のリポジトリ。
+東京都の中古マンション等の取引価格（総額）を予測するモデル。東京大学「機械学習応用」（2026 年度）の演習コンペ [`utokyo-mlapp-2026-ex1`](https://www.kaggle.com/competitions/utokyo-mlapp-2026-ex1) に、グループ D として取り組んだ。
 
-Python 環境は [uv](https://docs.astral.sh/uv/) で管理する（Python 3.12）。
+## 課題
 
-## セットアップ
+- 入力：所在地・最寄駅・面積・間取り・築年・都市計画・取引時期など（各列は [`docs/columns.md`](docs/columns.md)）
+- 学習：2019 年第 1 四半期〜2025 年第 2 四半期の取引（約 20 万件）
+- 予測：2025 年第 3 四半期〜2026 年第 1 四半期の取引（約 2.9 万件）
+- 評価：RMSLE
 
-### 1. uv をインストール（未導入の場合）
+test が train より未来の期間なので、検証は時系列 CV（3 fold）で行う（[`docs/validation.md`](docs/validation.md)）。
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-# または: brew install uv
-```
+## 手法
 
-### 2. 依存パッケージをインストール
+- **目的変数**：log(㎡単価) から相場の指数を引いた値を学習する。予測には指数を足し戻し、面積を掛けて総額に戻す
+- **特徴量**：建物・間取りの分解、地区や駅ごとの集約、地区の緯度・経度と主要駅への近さ（国土交通省の位置参照情報と駅別乗降客数データ）
+- **モデル**：LightGBM・CatBoost・線形モデル・ヘドニック回帰、地区や駅ごとの価格の平均（fold ごとに計算する target encoding）を使う LightGBM、築年数・面積・価格情報区分などで行を絞って学習した LightGBM
+- **アンサンブル**：上の各モデルの予測を、2 段目の LightGBM で混ぜる（stacking）
 
-リポジトリのルートで実行する。
+工程ごとの打ち手の全体像は [`docs/workflow.md`](docs/workflow.md)。
+
+## 実行
+
+Python 3.12 と [uv](https://docs.astral.sh/uv/) を使う。コンペのデータはリポジトリに含まれている（`utokyo-mlapp-2026-ex1/`）。
 
 ```bash
 uv sync
-```
-
-`uv sync` で Python 3.12 の取得・`.venv/` の作成・`uv.lock` どおりのパッケージ導入まで自動で行われる。
-
-動作確認（CV の 3 fold と本番の学習から提出ファイルの作成まで、数分かかる）:
-
-```bash
 uv run python main.py
 ```
 
-最後に `保存しました: submissions/submission.csv（29341 行）` と表示されれば OK。途中に検証 RMSLE と特徴量の重要度も表示される。`submissions/` は git の管理外。
+CV のスコアを表示し、`submissions/submission.csv` を作る（数分かかる）。位置参照情報は初回の実行時に `external_data/` へ自動でダウンロードされる。
 
-## データ
+## 構成
 
-コンペのデータはリポジトリに含まれている（`utokyo-mlapp-2026-ex1/`）。clone すればそのまま使える。
-
-- `train.csv` / `test.csv` / `sample_submission.csv`
-- 各カラムの値のまとめ: [`docs/columns.md`](docs/columns.md)
-
-## uv とは
-
-Python 本体・仮想環境（`.venv`）・パッケージをまとめて管理するツール。pyenv + venv + pip の役割を 1 つでこなし、pip よりかなり速い。
-
-| ファイル | 役割 | git |
-|---|---|---|
-| `pyproject.toml` | 使うパッケージの一覧（`uv add` が自動で書く） | コミットする |
-| `uv.lock` | 依存も含めた全パッケージの正確なバージョン（自動生成） | コミットする |
-| `.python-version` | 使う Python のバージョン | コミットする |
-| `.venv/` | 実際にパッケージが入る場所（`uv sync` / `uv run` が自動で作る） | コミットしない |
-
-この 3 ファイルがあれば、誰の PC でも `uv sync` で同じ環境が再現できる。`requirements.txt` は使わない（`uv.lock` が同じ役割）。
-
-## 使い方
-
-### 実験
-
-試したい工程のファイル（`src/` の中。どのファイルがどの工程かは [`docs/experiment-guide.md`](docs/experiment-guide.md) の「構成」）を直して、`uv run python main.py` を実行する。CV が良くなったら PR を出す。
-
-実験の進め方とルールは [`docs/experiment-guide.md`](docs/experiment-guide.md)、検証方法とその理由は [`docs/validation.md`](docs/validation.md)、精度改善の工程と打ち手の全体像は [`docs/workflow.md`](docs/workflow.md) にまとめている。
-
-### コードの整形とチェック
-
-PR を出す前に実行する。書式をそろえ、怪しい書き方を指摘・修正する（[ruff](https://docs.astral.sh/ruff/)）。型ヒントとコードの食い違いを調べる（[mypy](https://mypy.readthedocs.io/)）。
-
-```bash
-uv run ruff format .
-uv run ruff check --fix .
-uv run mypy
-```
-
-### スクリプト
-
-```bash
-uv run python <script>.py
-```
-
-### ノートブック（VS Code / Cursor）
-
-1. `uv sync` を済ませておく（`.venv/` ができていればよい）
-2. `notebooks/` の `.ipynb` を開く
-3. 右上の「カーネルを選択」→「Python 環境」を選ぶ
-4. 一覧から次の環境を選ぶ（★ が付いていることが多い）
-
-   ```
-   condominium-resale-price-pred (3.12.x)   .venv/bin/python
-   ```
-
-   - `/opt/homebrew/bin/python3` や `/usr/bin/python3` は PC 全体の Python で、パッケージが入っていない
-   - 「Python 環境の作成」は選ばない（`.venv` が二重にできる）
-5. 右上に `condominium-resale-price-pred (3.12.x)` と表示されれば OK。次回からは自動で選ばれる
-
-一覧に出ないときは、パスを直接指定する。
-
-1. コマンドパレット（`Cmd+Shift+P`）で「Python: インタープリターを選択」を開く
-2. 「インタープリター パスを入力」で `.venv/bin/python` を指定する
-
-### ノートブック（ブラウザ）
-
-```bash
-uv run jupyter lab
-```
-
-この方法では `.venv` の環境が自動で使われるので、カーネルの選択は不要。
-
-### ノートブックでの注意
-
-- パッケージが足りないときは、ノートブック内で `!pip install` を使わない。ターミナルで `uv add <package>` を実行し、カーネルを再起動する
-- データは `../utokyo-mlapp-2026-ex1/train.csv` のように、ノートブックからの相対パスで読む
-
-## パッケージの追加・削除
-
-```bash
-uv add <package>            # 追加（pyproject.toml と uv.lock が更新される）
-uv add --dev <package>      # 開発用ツールとして追加
-uv remove <package>         # 削除
-```
-
-変更した `pyproject.toml` と `uv.lock` はコミットする。他の人は `git pull` のあと `uv sync` すれば同じパッケージが入る。
-
-補足（pip に慣れている人向け）：`pip install` の代わりに `uv add` を使う。pip で入れたパッケージは `pyproject.toml` に記録されず、他の人の環境に入らない。`pip freeze` や `source .venv/bin/activate` も不要。
-
-## トラブルシューティング
-
-| 症状 | 対処 |
+| パス | 内容 |
 |---|---|
-| LightGBM の import で `libomp` エラー（macOS） | `brew install libomp` |
-| 環境がおかしくなった | `rm -rf .venv && uv sync` |
+| `main.py` | 前処理から提出ファイルの作成までを、工程の順に呼ぶ |
+| `src/` | 工程ごとの処理（前処理・特徴量・学習データの選択・目的変数・モデル・アンサンブル・後処理） |
+| `scripts/` | ハイパーパラメータの探索、seed 平均など |
+| `notebooks/` | EDA |
+| `docs/` | 列の説明、検証方法、実験の進め方 |
+| `slides/` | 発表資料 |
+
+開発に参加する場合は [`docs/development.md`](docs/development.md)（環境構築）と [`docs/experiment-guide.md`](docs/experiment-guide.md)（実験の進め方）を参照。
+
+## 外部データの扱い
+
+コンペの規約により、テスト期間（2025 年第 3 四半期以降）の取引データは使っていない。外部データは、基準日が 2025 年第 2 四半期以前のものだけを使う。
