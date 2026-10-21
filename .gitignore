@@ -18,3 +18,5 @@ external_data/
 .DS_Store
 .vscode/
 .idea/
+
+.claude
