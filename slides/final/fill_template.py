@@ -152,6 +152,7 @@ prs = Presentation(sys.argv[1])
 s_cover, s_model, s_score, s_ai, s_good, s_bad, s_self = prs.slides
 s_story = duplicate(prs, s_model)
 s_team = duplicate(prs, s_story)
+s_feat = duplicate(prs, s_model)
 s_score2 = duplicate(prs, s_score)
 s_probe = duplicate(prs, s_score2)
 selves = [s_self]
@@ -229,12 +230,10 @@ body.left, body.top, body.width, body.height = (
 fill_body(
     body,
     [
-        (0, "前処理：面積・築年数などの文字列を数値にした", False),
         (0, "目的変数：log(㎡単価) − 相場の指数（log）", False),
         (1, "test は 2025年7月〜2026年3月の取引", False),
         (1, "test の時期の指数は、直近 4 四半期の傾きで延ばした", False),
-        (0, "特徴量：主要駅までの距離、一部屋あたりの面積", False),
-        (1, "地区・駅・建物ごとの件数・面積などの集計", False),
+        (0, "前処理と特徴量：次のページにまとめた", False),
         (
             0,
             "学習データ：成約価格情報の行の重みを 1.5 倍にした",
@@ -264,8 +263,7 @@ text_box(
     0.85,
     [
         "注：stacking は、複数モデルの予測を別のモデルで組み合わせること",
-        "注：TE（target encoding）は、学習データの価格を",
-        "　 地区・駅・建物ごとに平均した特徴量（上の集計は価格を使わない）",
+        "注：TE（target encoding）の中身は次のページ",
         "データ：国土交通省 不動産情報ライブラリの取引価格・",
         "　 成約価格情報（東京都の中古マンション等）を講義用に加工",
     ],
@@ -292,7 +290,7 @@ steps = [
         0.5,
         [
             "7〜9 月の予測が 0.33% 高いと分かり、test 全期間を下げる",
-            "LB probing：Public LB の変化からずれを測った（7 ページ）",
+            "LB probing：Public LB の変化からずれを測った（8 ページ）",
         ],
     ),
     (
@@ -301,7 +299,7 @@ steps = [
         [
             "最終の予測：Public LB 0.18571、CV 0.18604 ※",
             "CV は seed 3 つの平均",
-            "補正に使ったため、Public は Private より良く出うる",
+            "Private LB 0.19786（Public より 0.012 悪い）",
         ],
     ),
 ]
@@ -344,6 +342,85 @@ for i, (_top, h, lines) in enumerate(steps):
         down_triangle(s_model, X0 + W / 2, y + 0.01)
         y += 0.09
 
+# ---- 前処理と特徴量：種類ごとに、中身と理由を表にする -------------------------
+feat_body = placeholder(s_feat, 1)
+feat_body._element.getparent().remove(feat_body._element)
+frame_el = copy.deepcopy(next(sh for sh in s_score.shapes if sh.has_table)._element)
+s_feat.shapes._spTree.append(frame_el)
+feat_frame = next(sh for sh in s_feat.shapes if sh.has_table)
+feat_tbl = frame_el.find(".//" + qn("a:tbl"))
+# テンプレートの表は 5 列なので、3 列に減らす
+for gc in feat_tbl.find(qn("a:tblGrid")).findall(qn("a:gridCol"))[3:]:
+    gc.getparent().remove(gc)
+for tr in feat_tbl.findall(qn("a:tr")):
+    for tc in tr.findall(qn("a:tc"))[3:]:
+        tr.remove(tc)
+fill_table(
+    feat_frame,
+    [1.35, 4.85, 3.12],
+    [
+        [
+            "前処理",
+            "面積「2,000㎡以上」→ 2000、建築年「戦前」→ 1945、\n駅距離「30分～60分」などの範囲 → 中央値",
+            "文字列のままでは大小を比べられない",
+        ],
+        [
+            "前処理",
+            "取引時期 → 2019 年 1〜3 月からの経過四半期。\n欠損は NaN のまま",
+            "LightGBM は欠損をそのまま扱える",
+        ],
+        [
+            "元の列",
+            "築年数・面積・駅距離・建ぺい率・容積率と、\n市区町村・地区・駅・間取り・構造などのカテゴリ",
+            "カテゴリは train と test で同じ番号",
+        ],
+        [
+            "位置",
+            "地区の緯度・経度と、主要 7 駅（東京・新宿・渋谷・\n池袋・品川・六本木・虎ノ門）までの距離",
+            "外部データ（下の注）",
+        ],
+        [
+            "地区・駅の集計",
+            "件数と、平均の築年数・面積・駅距離との差",
+            "価格を使わない",
+        ],
+        [
+            "建物の集計",
+            "同じ建物とみなした行の件数・面積の幅・間取りの種類数",
+            "価格を使わない",
+        ],
+        ["間取り", "部屋数に換算した、一部屋あたりの面積", "価格を使わない"],
+        [
+            "TE",
+            "地区・駅・建物ごとの価格の平均。\n1 つ上の単位の平均へ、件数に応じて寄せる",
+            "価格を使うので、fold ごとに\n学習データだけで作る",
+        ],
+    ],
+    y=1.1,
+    sz=11.5,
+    head_sz=13.5,
+    row_h=0.3,
+    head_h=0.35,
+)
+for tc, text in zip(
+    feat_tbl.findall(qn("a:tr"))[0].findall(qn("a:tc")),
+    ["種類", "中身", "理由・注意"],
+    strict=True,
+):
+    set_cell(tc, text, 13.5, True)
+text_box(
+    s_feat,
+    0.34,
+    4.95,
+    9.32,
+    0.45,
+    [
+        "注：外部データは、国土交通省の位置参照情報（2024 年版、基準日 2024-07-26）と国土数値情報の駅別乗降客数（2024 年度版）。",
+        "　 どちらも test の期間（2025 年 7 月〜）より前の時点のデータ",
+    ],
+    10,
+)
+
 # ---- そのモデルに至った経緯：分かれ目を上から順に並べた流れの図 ---------------
 story_body = placeholder(s_story, 1)
 story_body._element.getparent().remove(story_body._element)
@@ -353,7 +430,7 @@ text_box(
     1.05,
     9.32,
     0.25,
-    ["番号は提出した順（5 ページのグラフと同じ）"],
+    ["番号は提出した順（6 ページのグラフと同じ）"],
     10.5,
 )
 STORY = [
@@ -454,6 +531,7 @@ fill_body(
 
 # ---- スコアの推移（提出したもの）：折れ線グラフ ------------------------------
 # 提出の中身・手元の CV・Public LB。CV が None の提出は、CV を測っていないもの
+PRIVATE_FINAL = 0.19786
 SUBMISSIONS = [
     ("LightGBM のベースライン", 0.20674, 0.20542),
     ("カテゴリの扱いと学習率の調整", 0.20360, 0.20222),
@@ -483,7 +561,7 @@ fill_body(
         ),
         (
             0,
-            "10 を ※ の測り方で測ると 0.18614（seed 42）。Private は 10/22 0:00 の公開後に追記する",
+            "10 を ※ の測り方で測ると 0.18614（seed 42）。12 の Private LB は 0.19786 で、Public より 0.012 悪い",
             False,
         ),
     ],
@@ -500,6 +578,12 @@ data = CategoryChartData()
 data.categories = [str(i) for i in range(1, len(SUBMISSIONS) + 1)]
 data.add_series("CV", [cv for _, cv, _ in SUBMISSIONS], number_format="0.000")
 data.add_series("Public LB", [lb for _, _, lb in SUBMISSIONS], number_format="0.000")
+# Private LB は最終の提出（12）の値だけ分かっている
+data.add_series(
+    "Private LB（12）",
+    [None] * (len(SUBMISSIONS) - 1) + [PRIVATE_FINAL],
+    number_format="0.000",
+)
 chart = s_score.shapes.add_chart(
     XL_CHART_TYPE.LINE_MARKERS,
     Inches(0.34),
@@ -529,7 +613,7 @@ chart.category_axis.axis_title.text_frame.paragraphs[0].runs[0].font.size = Pt(1
 chart.category_axis.axis_title.text_frame.paragraphs[0].runs[0].font.bold = False
 # 2 本の線は、主役の Public LB を濃い色、手元の CV をグレーにして見分ける
 for series, color in zip(
-    chart.plots[0].series,
+    list(chart.plots[0].series)[:2],
     (RGBColor(0x99, 0x99, 0x99), RGBColor(0x1F, 0x1F, 0x1F)),
     strict=True,
 ):
@@ -563,6 +647,23 @@ for i in (9, 11):
     label.position = XL_LABEL_POSITION.ABOVE
     label.font.size = Pt(9)
 last_cv.format.line.width = Pt(1.5)
+
+private = chart.plots[0].series[2]
+private.format.line.fill.background()
+private.marker.style = XL_MARKER_STYLE.SQUARE
+private.marker.size = 8
+private.marker.format.fill.solid()
+private.marker.format.fill.fore_color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
+private.marker.format.line.color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
+label = private.points[len(SUBMISSIONS) - 1].data_label
+label.show_value = True
+label._get_or_add_dLbl().find(qn("c:idx")).addnext(
+    etree.fromstring(
+        '<c:numFmt xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" formatCode="0.00000" sourceLinked="0"/>'
+    )
+)
+label.position = XL_LABEL_POSITION.LEFT
+label.font.size = Pt(9)
 
 box = s_score.shapes.add_textbox(Inches(6.5), Inches(1.85), Inches(3.2), Inches(3.5))
 txBody = box._element.find(qn("p:txBody"))
@@ -724,8 +825,9 @@ fill_body(
         (1, "下げた量 c が 2m より大きいと LB は悪くなる", False),
         (2, "提出 11 の悪化の幅から m を求められる", False),
         (0, "注意", True),
-        (1, "補正に Public LB を使った", False),
-        (2, "Public は Private より良く出うる", False),
+        (1, "Private LB は 0.19786（Public より 0.012 悪い）", False),
+        (2, "補正で LB が動くのは最大 0.0036", False),
+        (2, "差の大半は補正以外による", False),
     ],
     sizes=(13, 12, 11.5),
     line=110,
@@ -823,6 +925,7 @@ fill_body(
 # ---- タイトル：結論を 1 文にし、テンプレートの見出しは左上に「項目：」として残す ----
 TITLES = [
     (s_model, "13 モデルの stacking で㎡単価を予測する最終モデル"),
+    (s_feat, "前処理と、価格を使わない集計を中心にした特徴量"),
     (s_story, "目的変数の見直しと stacking による改善"),
     (s_team, "4 人の分担と、提出ファイルを再現できる仕組み"),
     (s_score, "ほぼ同じ向きに動いた CV と Public LB"),
