@@ -1,0 +1,514 @@
+#!/usr/bin/env python3
+"""配布された template.pptx の空欄を中身で埋め、最終発表のスライドを作る。
+
+ページの構成・見出し・デザインはテンプレートのまま使う。中身の多い 2・3 枚目は同じページを複製して 2 枚にし、
+最後の「演習を通して学んだこと、反省点」はテンプレートの指示どおりメンバーの人数分に複製する。
+書体はテンプレートのテーマに任せ、文字に直接書かない。
+
+uv run --with python-pptx python slides/final/fill_template.py slides/final/template.pptx slides/final/final.pptx
+"""
+
+import copy
+import sys
+
+from lxml import etree
+from pptx import Presentation
+from pptx.oxml.ns import qn
+from pptx.util import Inches
+
+EMU = 914400
+MEMBERS = ["南條 佑太", "大久保 翔", "藤瀬 太翼", "小林 麟太郎"]
+BULLETS = {
+    0: ("●", 228600, -228600),
+    1: ("○", 457200, -228600),
+    2: ("–", 685800, -228600),
+}
+
+
+def sub(parent, tag, **attrs):
+    el = etree.SubElement(parent, qn(tag))
+    for k, v in attrs.items():
+        el.set(k, str(v))
+    return el
+
+
+def run(p, text, sz, b=False):
+    r = sub(p, "a:r")
+    sub(r, "a:rPr", lang="ja-JP", sz=int(sz * 100), b=1 if b else 0)
+    sub(r, "a:t").text = text
+
+
+def fill_body(shape, items, sizes=(12, 11, 10.5), line=None):
+    """本文の枠を (階層, 文, 太字) の並びで埋める。記号はテンプレートと同じ ● ○ を箇条書きの書式で付ける。"""
+    txBody = shape._element.find(qn("p:txBody"))
+    for p in txBody.findall(qn("a:p")):
+        txBody.remove(p)
+    for lvl, text, b in items:
+        p = sub(txBody, "a:p")
+        ch, marL, ind = BULLETS[lvl]
+        pPr = sub(p, "a:pPr", lvl=lvl, marL=marL, indent=ind, algn="l")
+        if line:
+            sub(sub(pPr, "a:lnSpc"), "a:spcPct", val=int(line * 1000))
+        sub(sub(pPr, "a:spcBef"), "a:spcPts", val=600 if lvl == 0 else 100)
+        sub(sub(pPr, "a:spcAft"), "a:spcPts", val=0)
+        sub(sub(pPr, "a:buClr"), "a:srgbClr", val="000000" if lvl == 0 else "737373")
+        sub(pPr, "a:buSzPct", val=80000 if lvl == 0 else 90000)
+        sub(pPr, "a:buFont", typeface="Arial")
+        sub(pPr, "a:buChar", char=ch)
+        run(p, text, sizes[lvl], b)
+
+
+def set_cell(tc, text, sz, b=False):
+    txBody = tc.find(qn("a:txBody"))
+    for p in txBody.findall(qn("a:p")):
+        txBody.remove(p)
+    for line in text.split("\n"):
+        p = sub(txBody, "a:p")
+        pPr = sub(p, "a:pPr", marL=0, indent=0, algn="l")
+        sub(pPr, "a:buNone")
+        run(p, line, sz, b)
+    tcPr = tc.find(qn("a:tcPr"))
+    for k in ("marT", "marB"):
+        tcPr.set(k, str(int(0.03 * EMU)))
+    tcPr.set("anchor", "ctr")
+
+
+def fill_table(frame, widths, rows, y, sz, head_sz, row_h):
+    """テンプレートの表の列幅を決め、行を足して埋める。見出し行の文言と罫線はテンプレートのまま。"""
+    frame.left, frame.top = Inches(0.34), Inches(y)
+    tbl = frame._element.find(".//" + qn("a:tbl"))
+    for gc, w in zip(
+        tbl.find(qn("a:tblGrid")).findall(qn("a:gridCol")), widths, strict=True
+    ):
+        gc.set("w", str(int(w * EMU)))
+    trs = tbl.findall(qn("a:tr"))
+    head, blank = trs[0], copy.deepcopy(trs[1])
+    for tr in trs[1:]:
+        tbl.remove(tr)
+    head.set("h", str(int(0.3 * EMU)))
+    for tc in head.findall(qn("a:tc")):
+        txt = "".join(t.text or "" for t in tc.iter(qn("a:t")))
+        set_cell(tc, txt, head_sz, True)
+    for cells in rows:
+        tr = copy.deepcopy(blank)
+        tr.set("h", str(int(row_h * EMU)))
+        for tc, text in zip(tr.findall(qn("a:tc")), cells, strict=True):
+            set_cell(tc, text, sz)
+        tbl.append(tr)
+    frame.width = Inches(sum(widths))
+    frame.height = Inches(0.3 + row_h * len(rows))
+
+
+def placeholder(slide, idx):
+    return next(s for s in slide.placeholders if s.placeholder_format.idx == idx)
+
+
+def duplicate(prs, src):
+    """src と同じレイアウト・同じ図形のページを作り、src の直後に置く。"""
+    pos = list(prs.slides).index(src)
+    new = prs.slides.add_slide(src.slide_layout)
+    for sh in list(new.shapes):
+        sh._element.getparent().remove(sh._element)
+    for sh in src.shapes:
+        new.shapes._spTree.append(copy.deepcopy(sh._element))
+    ids = prs.slides._sldIdLst
+    moved = ids[-1]
+    ids.remove(moved)
+    ids.insert(pos + 1, moved)
+    return new
+
+
+def set_title(slide, text):
+    tf = placeholder(slide, 0).text_frame
+    p = tf.paragraphs[0]
+    for r in p.runs[1:]:
+        r._r.getparent().remove(r._r)
+    p.runs[0].text = text
+
+
+prs = Presentation(sys.argv[1])
+s_cover, s_model, s_score, s_ai, s_good, s_bad, s_self = prs.slides
+s_story = duplicate(prs, s_model)
+s_score2 = duplicate(prs, s_score)
+selves = [s_self]
+for _ in MEMBERS[1:]:
+    selves.append(duplicate(prs, selves[-1]))
+
+# ---- 最終モデルの中身 -------------------------------------------------------
+fill_body(
+    placeholder(s_model, 1),
+    [
+        (
+            0,
+            "最終評価に選んだ提出：10/21 の提出（Public 0.18571、手元の CV 0.18604 ※）",
+            True,
+        ),
+        (
+            1,
+            "前処理：面積・建築年・駅距離の文字列を数値に直し、カテゴリの欠損を「欠損」という値にまとめた",
+            False,
+        ),
+        (
+            1,
+            "目的変数：log(㎡単価) から、学習データで作った四半期ごとの相場の指数を引いた値",
+            False,
+        ),
+        (2, "test の時期の指数は、直近 4 四半期の傾きを直線で延ばして求めた", False),
+        (
+            1,
+            "特徴量：主要駅までの距離、地区・駅・建物ごとの件数や築年数の集計、一部屋あたりの面積",
+            False,
+        ),
+        (
+            1,
+            "モデル：1 段目の 13 モデルの予測を、2 段目の LightGBM で混ぜた（stacking）",
+            False,
+        ),
+        (
+            2,
+            "土台：LightGBM（㎡単価・総額）・CatBoost・線形回帰＋LightGBM の 4 つの予測の平均",
+            False,
+        ),
+        (
+            2,
+            "2 段目の入力だけ：特定の行で学ぶ LightGBM 5 つ、ヘドニック回帰、TE 付きの LightGBM 3 つ",
+            False,
+        ),
+        (
+            1,
+            "学習データ：成約価格情報（不動産会社の成約データ。test の 67%）の行の重みを 1.5 倍にした",
+            False,
+        ),
+        (
+            1,
+            "仕上げ：seed 3 つの予測を平均し、LB probing で測った予測の上振れ +0.33% の分だけ全体を下げた",
+            False,
+        ),
+        (
+            2,
+            "上振れは Public（2025年7〜9月）で測ったので、Private の時期に当てはまるとは限らない",
+            False,
+        ),
+        (
+            0,
+            "手元の検証方法：過去で学習し、直後の 3 四半期を当てる時系列の 3 fold",
+            True,
+        ),
+        (
+            1,
+            "※ 10/19 から、2 段目は採点する fold より前の fold だけで学習した（最も古い fold は 2 段目なし）",
+            False,
+        ),
+        (
+            1,
+            "TE（target encoding）：地区・駅・建物ごとの過去の価格の平均を特徴量にすること",
+            False,
+        ),
+    ],
+    sizes=(14, 12.5, 12),
+    line=105,
+)
+
+# ---- 経緯・各自の貢献・再現性 -------------------------------------------------
+fill_body(
+    placeholder(s_story, 1),
+    [
+        (0, "そのモデルに至った経緯（主な分かれ目）", True),
+        (
+            1,
+            "目的変数を㎡単価にし、相場の指数を引いた：決定木は学習期間より先の値上がりを表せないため",
+            False,
+        ),
+        (
+            1,
+            "isotonic 回帰による予測の補正をやめた：CV は良くなったが、Public LB は補正なしより悪くなった",
+            False,
+        ),
+        (
+            1,
+            "stacking に移った：CV が 0.19174 から 0.18765 になり、採用した変更の中で最も大きく改善した",
+            False,
+        ),
+        (
+            1,
+            "後半は 2 段目の入力と TE の作り方を積み重ねた：1 回の改善は 0.0001〜0.0009 にとどまった",
+            False,
+        ),
+        (0, "各自の取り組みと、最終モデルへの貢献", True),
+        (
+            1,
+            "南條：複数モデルの単純平均と線形回帰の残差を学ぶモデルを作り、誤差の分析を進めた",
+            False,
+        ),
+        (
+            1,
+            "大久保：相場の指数を引く目的変数、成約価格情報の重み、TE の階層的な平滑化を入れた",
+            False,
+        ),
+        (
+            1,
+            "藤瀬：実験の土台と時系列 CV、地区・駅の集計、stacking、LB probing を作った",
+            False,
+        ),
+        (
+            1,
+            "小林：㎡単価の目的変数を入れ、間取りの分解・地価公示・誤差の分析を試した",
+            False,
+        ),
+        (0, "再現性", True),
+        (
+            1,
+            "seed は 42・1・2 に固定し、scripts の 2 つのスクリプトで提出ファイルまで作れる",
+            False,
+        ),
+        (
+            1,
+            "提出ファイルは probe/ に置いた：同じ PC で再実行すると提出ファイルが完全に一致した",
+            False,
+        ),
+        (1, "PC が違うと CV が 0.0001 ほど変わった", False),
+    ],
+    sizes=(14, 12.5, 12),
+    line=100,
+)
+
+# ---- スコアの推移（提出したもの）-------------------------------------------
+fill_body(
+    placeholder(s_score, 1),
+    [
+        (
+            0,
+            "提出したものを時系列に並べた（Private は 10/22 0:00 の公開後に記入）",
+            False,
+        ),
+        (
+            0,
+            "手元の検証スコアは、時系列 3 fold の CV の RMSLE（小さいほど良い）",
+            False,
+        ),
+        (
+            0,
+            "※ は 10/19 に変えた CV の測り方の値：同じ構成でも、前の測り方より 0.0006〜0.0008 大きく出る",
+            False,
+        ),
+    ],
+    sizes=(11, 10.5, 10),
+)
+desc = placeholder(s_score, 1)
+desc.top, desc.height = Inches(0.9), Inches(0.85)
+for el in desc._element.iter(qn("a:spcPts")):
+    el.set("val", "0")
+HEAD_W = [3.3, 1.75, 0.72, 0.72, 2.83]
+fill_table(
+    next(sh for sh in s_score.shapes if sh.has_table),
+    HEAD_W,
+    [
+        ["LightGBM のベースライン", "0.20674", "0.20542", "", "基準"],
+        ["カテゴリの扱いと学習率の調整", "0.20360", "0.20222", "", "採用"],
+        ["損失関数を Huber 損失に変更", "0.20004", "0.19914", "", "採用"],
+        [
+            "isotonic 回帰で予測を後から補正",
+            "0.19727",
+            "0.20059",
+            "",
+            "CV は改善、LB は悪化し、やめた",
+        ],
+        ["目的変数から相場の上昇を切り離す", "0.19664", "0.19709", "", "採用"],
+        ["主要駅までの距離、地区の緯度経度", "0.19553", "0.19561", "", "採用"],
+        ["地区・駅の平均との差", "0.19358", "0.19321", "", "採用"],
+        ["4 モデルの単純平均", "0.19174", "0.19251", "", "stacking の元になった"],
+        ["6 モデルの stacking", "0.18765", "0.18770", "", "採用した中で最も大きい改善"],
+        ["13 モデル、TE、seed 平均", "0.18531", "0.18595", "", "採用"],
+        [
+            "LB probing：上の提出の 7〜9 月だけ 1% 下げた",
+            "—",
+            "0.18604",
+            "",
+            "予測の上振れ +0.33% を測った",
+        ],
+        [
+            "成約価格情報の重み、TE の平滑化、上振れの補正",
+            "0.18604 ※",
+            "0.18571",
+            "",
+            "最終の提出（CV は新しい測り方）",
+        ],
+    ],
+    y=1.8,
+    sz=9.5,
+    head_sz=10,
+    row_h=0.27,
+)
+
+# ---- スコアの推移（CV だけで判断したもの）----------------------------------
+fill_body(
+    placeholder(s_score2, 1),
+    [
+        (0, "提出せずに CV だけで採否を決めた主な実験を時系列に並べた", False),
+        (
+            0,
+            "手元の検証スコアは「変える前の CV → 変えた後の CV」で、変える前はその時点の土台",
+            False,
+        ),
+        (
+            0,
+            "※ は 10/19 に変えた CV の測り方の値：同じ構成でも、前の測り方より 0.0006〜0.0008 大きく出る",
+            False,
+        ),
+    ],
+    sizes=(11, 10.5, 10),
+)
+desc = placeholder(s_score2, 1)
+desc.top, desc.height = Inches(0.9), Inches(0.85)
+for el in desc._element.iter(qn("a:spcPts")):
+    el.set("val", "0")
+fill_table(
+    next(sh for sh in s_score2.shapes if sh.has_table),
+    HEAD_W,
+    [
+        ["㎡単価を目的変数にする", "0.20004 → 0.19845", "—", "—", "採用"],
+        [
+            "間取りを部屋数などに分解する",
+            "0.19727 → 0.19736",
+            "—",
+            "—",
+            "不採用、一部屋あたりの面積の元になった",
+        ],
+        ["CatBoost の学習率・深さの見直し", "0.18960 → 0.18944", "—", "—", "採用"],
+        ["同じ建物とみなした物件ごとの集計", "0.18944 → 0.18872", "—", "—", "採用"],
+        [
+            "一部の行だけのモデルを 2 段目の入力に",
+            "0.18944 → 0.18871",
+            "—",
+            "—",
+            "採用",
+        ],
+        ["2 段目の入力に 5 モデルを足す", "0.18765 → 0.18680", "—", "—", "採用"],
+        ["2 段目の損失を二乗誤差にする", "0.18765 → 0.18699", "—", "—", "採用"],
+        ["一部屋あたりの面積", "0.18599 → 0.18548", "—", "—", "採用"],
+        [
+            "TE 付きのモデルを 2 つ足す（11 → 13 モデル）",
+            "0.18628 → 0.18614 ※",
+            "—",
+            "—",
+            "採用",
+        ],
+        ["成約価格情報の重みを 1.5 倍にする", "0.18622 → 0.18606 ※", "—", "—", "採用"],
+        ["TE を階層的に平滑化する", "0.18622 → 0.18611 ※", "—", "—", "採用"],
+        [
+            "相場から外れた取引を学習から外す",
+            "0.0002〜0.0018 悪化",
+            "—",
+            "—",
+            "不採用、テスト期間にも外れ値がある",
+        ],
+        [
+            "近くの地価公示の地点の価格",
+            "改善なし",
+            "—",
+            "—",
+            "不採用、地区より細かい住所がない",
+        ],
+        [
+            "特徴量 9 つ、2 段目の設定、カテゴリの組み合わせ",
+            "差 0.0001 以内",
+            "—",
+            "—",
+            "不採用",
+        ],
+    ],
+    y=1.8,
+    sz=9.5,
+    head_sz=10,
+    row_h=0.235,
+)
+
+# ---- AI の使い方 -------------------------------------------------------------
+fill_body(
+    placeholder(s_ai, 1),
+    [
+        (0, "使った AI ツールと任せたこと", True),
+        (
+            1,
+            "Claude Code：コード・PR の本文・レビューを任せ、夜間は複数のエージェントに実験を分けて任せた",
+            False,
+        ),
+        (1, "Fable（藤瀬）：残った誤差の分析と、LB probing の設計", False),
+        (1, "Gemini（大久保）：夜間にまとめた PR の検証", False),
+        (0, "AI が誤っていたこと", True),
+        (
+            1,
+            "安い物件の分類器で CV が良くなった：2 段目の入力の作り方による漏れで、入力を直すと改善が消えた",
+            False,
+        ),
+        (
+            1,
+            "AI が、別のセッションで書き換えられた PR に気づかず、古い手順の LB probing の提出を案内した：人が PR の本文を読み直して気づいた",
+            False,
+        ),
+        (0, "AI の提案で採用したもの・却下したもの", True),
+        (1, "採用：stacking、TE 付きのモデル、seed 平均、LB probing", False),
+        (
+            1,
+            "却下：相場から外れた取引を外す案は、3 つのしきい値すべてで CV が悪化した",
+            False,
+        ),
+        (0, "AI への指示ファイルに書いて効いたこと", True),
+        (
+            1,
+            "テスト期間の取引データを見ない、価格を使う特徴量は fold ごとに作る、重い計算は同時に 1 本だけ実行する",
+            False,
+        ),
+    ],
+    sizes=(14, 12.5, 12),
+    line=105,
+)
+
+# ---- 良かった点・悪かった点（全員で振り返って書き直す）----------------------
+fill_body(
+    placeholder(s_good, 1),
+    [
+        (0, "話し合いの材料：全員で振り返ってから書き直す", True),
+        (1, "PR と Issue で実験を記録し、CV と LB の対応を最後まで残せた", False),
+        (
+            1,
+            "isotonic の回を除き、CV と LB の差は 0.0008 以内に収まり、CV で採否を決められた",
+            False,
+        ),
+        (1, "効かなかった実験も、不採用として理由と一緒に記録した", False),
+        (1, "AI に夜間の実験を任せ、朝に人が結果を見て採否を決めた", False),
+    ],
+    sizes=(14, 13.5, 13),
+    line=115,
+)
+fill_body(
+    placeholder(s_bad, 1),
+    [
+        (0, "話し合いの材料：全員で振り返ってから書き直す", True),
+        (1, "計算が 1 台の PC に集まり、試せる量が限られた", False),
+        (1, "最も効いた stacking に移ったのが、締め切りの 3 日前だった", False),
+        (1, "PC によって CV が 0.0001 ほど違い、小さな改善を比べにくかった", False),
+        (1, "PR を積み重ねたため、どのブランチから始めるかが分かりにくかった", False),
+    ],
+    sizes=(14, 13.5, 13),
+    line=115,
+)
+
+# ---- 各自の学んだこと・反省点（本人が書く）-------------------------------------
+for slide, name in zip(selves, MEMBERS, strict=True):
+    set_title(slide, f"{name} 演習を通して学んだこと、反省点")
+    fill_body(
+        placeholder(slide, 1),
+        [
+            (0, "自分の担当と、最終モデルへの貢献", True),
+            (1, "（本人が書く）", False),
+            (0, "演習を通して学んだこと", True),
+            (1, "（本人が書く）", False),
+            (0, "反省点", True),
+            (1, "（本人が書く）", False),
+        ],
+        sizes=(14, 13.5, 13),
+        line=115,
+    )
+
+prs.save(sys.argv[2])
