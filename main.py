@@ -23,7 +23,7 @@ from src.models.catboost import CatBoost
 from src.models.hedonic import Hedonic
 from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
-from src.models.target_encoding import TargetEncodedLGBM
+from src.models.target_encoding import STATION_UNITS, TargetEncodedLGBM
 
 
 def _built_over_30(x: pd.DataFrame) -> np.ndarray:
@@ -105,6 +105,9 @@ MODELS: list[Callable[[], Model]] = [
     partial(LGBM, subset=_outside_23_wards),
     Hedonic,
     TargetEncodedLGBM,
+    # 駅の単位も足した平均と、総額の目的変数で作った平均を持つ TE を、2 段目の入力に足す（#80）
+    partial(TargetEncodedLGBM, units=STATION_UNITS),
+    partial(TargetEncodedLGBM, per_area=False),
 ]
 
 
