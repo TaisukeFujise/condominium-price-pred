@@ -21,6 +21,7 @@ from pptx.enum.chart import (
     XL_LEGEND_POSITION,
     XL_MARKER_STYLE,
 )
+from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR
 from pptx.oxml.ns import qn
@@ -531,8 +532,21 @@ fill_body(
 
 # ---- スコアの推移（提出したもの）：折れ線グラフ ------------------------------
 # 提出の中身・手元の CV・Public LB。CV が None の提出は、CV を測っていないもの
-# Private LB は、最終の採点に選んだ 2 つ（10 と 12）だけ分かっている
-PRIVATE = {9: 0.19828, 11: 0.19786}
+# 提出ごとの Private LB（10/22 公開）。SUBMISSIONS と同じ順
+PRIVATE = [
+    0.22596,
+    0.22335,
+    0.21876,
+    0.21251,
+    0.20925,
+    0.20844,
+    0.20670,
+    0.20491,
+    0.19959,
+    0.19828,
+    0.19828,
+    0.19786,
+]
 SUBMISSIONS = [
     ("LightGBM のベースライン", 0.20674, 0.20542),
     ("カテゴリの扱いと学習率の調整", 0.20360, 0.20222),
@@ -562,14 +576,19 @@ fill_body(
         ),
         (
             0,
-            "10 を ※ の測り方で測ると 0.18614（seed 42）。Private LB は 10 が 0.19828、12 が 0.19786",
+            "10 を ※ の測り方で測ると 0.18614（seed 42）",
+            False,
+        ),
+        (
+            0,
+            "Private LB（破線）は 12 が 0.19786：5 以降は Public より 0.012 ほど大きい",
             False,
         ),
     ],
     sizes=(11, 10.5, 10),
 )
 desc = placeholder(s_score, 1)
-desc.top, desc.height = Inches(0.85), Inches(0.9)
+desc.top, desc.height = Inches(0.85), Inches(1.15)
 for el in desc._element.iter(qn("a:spcPts")):
     el.set("val", "0")
 table = next(sh for sh in s_score.shapes if sh.has_table)
@@ -582,15 +601,15 @@ data.add_series("Public LB", [lb for _, _, lb in SUBMISSIONS], number_format="0.
 # Private LB は最終の提出（12）の値だけ分かっている
 data.add_series(
     "Private LB",
-    [PRIVATE.get(i) for i in range(len(SUBMISSIONS))],
+    PRIVATE,
     number_format="0.000",
 )
 chart = s_score.shapes.add_chart(
     XL_CHART_TYPE.LINE_MARKERS,
     Inches(0.34),
-    Inches(1.85),
+    Inches(2.05),
     Inches(6.0),
-    Inches(3.5),
+    Inches(3.35),
     data,
 ).chart
 chart.font.size = Pt(10)
@@ -599,8 +618,8 @@ chart.has_legend = True
 chart.legend.position = XL_LEGEND_POSITION.TOP
 chart.legend.include_in_layout = False
 value_axis = chart.value_axis
-value_axis.minimum_scale, value_axis.maximum_scale = 0.184, 0.208
-value_axis.major_unit = 0.004
+value_axis.minimum_scale, value_axis.maximum_scale = 0.184, 0.228
+value_axis.major_unit = 0.008
 value_axis.tick_labels.number_format = "0.000"
 value_axis.tick_labels.number_format_is_linked = False
 value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
@@ -650,13 +669,16 @@ for i in (9, 11):
 last_cv.format.line.width = Pt(1.5)
 
 private = chart.plots[0].series[2]
-private.format.line.fill.background()
+private.smooth = False
+private.format.line.color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
+private.format.line.width = Pt(1.5)
+private.format.line.dash_style = MSO_LINE_DASH_STYLE.DASH
 private.marker.style = XL_MARKER_STYLE.SQUARE
-private.marker.size = 8
+private.marker.size = 6
 private.marker.format.fill.solid()
 private.marker.format.fill.fore_color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
 private.marker.format.line.color.rgb = RGBColor(0x1F, 0x1F, 0x1F)
-for i in PRIVATE:
+for i in (9, 11):
     label = private.points[i].data_label
     label.show_value = True
     label._get_or_add_dLbl().find(qn("c:idx")).addnext(
@@ -667,7 +689,7 @@ for i in PRIVATE:
     label.position = XL_LABEL_POSITION.ABOVE
     label.font.size = Pt(9)
 
-box = s_score.shapes.add_textbox(Inches(6.5), Inches(1.85), Inches(3.2), Inches(3.5))
+box = s_score.shapes.add_textbox(Inches(6.5), Inches(2.05), Inches(3.2), Inches(3.35))
 txBody = box._element.find(qn("p:txBody"))
 for p in txBody.findall(qn("a:p")):
     txBody.remove(p)
