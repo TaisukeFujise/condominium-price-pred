@@ -219,22 +219,10 @@ def down_triangle(slide, cx, y):
     tri.shadow.inherit = False
 
 
-text_box(
-    s_model,
-    0.34,
-    1.0,
-    9.32,
-    0.35,
-    [
-        "相場の上昇を除いた㎡単価を 13 モデルで予測し、stacking でまとめたもの（Public LB 0.18571）"
-    ],
-    13,
-    bold_first=True,
-)
 body = placeholder(s_model, 1)
 body.left, body.top, body.width, body.height = (
     Inches(0.34),
-    Inches(1.4),
+    Inches(1.1),
     Inches(4.75),
     Inches(3.95),
 )
@@ -271,7 +259,7 @@ for el in body._element.iter(qn("a:spcPts")):
 text_box(
     s_model,
     0.34,
-    4.5,
+    4.3,
     4.75,
     0.85,
     [
@@ -285,7 +273,7 @@ text_box(
 )
 
 X0, W = 5.3, 4.36
-text_box(s_model, X0, 1.4, W, 0.3, ["予測ができるまでの流れ"], 11.5, bold_first=True)
+text_box(s_model, X0, 1.1, W, 0.3, ["予測ができるまでの流れ"], 11.5, bold_first=True)
 steps = [
     (1.72, 0.36, ["1 段目：13 モデルを学習し、それぞれ予測する"]),
     (None, 0.96, None),  # 2 つの箱を横に並べる段
@@ -317,7 +305,7 @@ steps = [
         ],
     ),
 ]
-y = 1.72
+y = 1.42
 for i, (_top, h, lines) in enumerate(steps):
     if lines is None:
         half = (W - 0.16) / 2
@@ -362,17 +350,7 @@ story_body._element.getparent().remove(story_body._element)
 text_box(
     s_story,
     0.34,
-    1.0,
-    9.32,
-    0.35,
-    ["提出 1 から 12 までに、Public LB を 0.20542 から 0.18571 まで下げた"],
-    13,
-    bold_first=True,
-)
-text_box(
-    s_story,
-    0.34,
-    1.33,
+    1.05,
     9.32,
     0.25,
     ["番号は提出した順（5 ページのグラフと同じ）"],
@@ -404,7 +382,7 @@ STORY = [
         "提出 10 → 12：Public LB 0.18595 → 0.18571（提出 11 は補正量を測るための提出）",
     ),
 ]
-y = 1.65
+y = 1.38
 for i, (head, evidence) in enumerate(STORY):
     flow_box(s_story, 0.34, y, 9.32, 0.45, [head, evidence], sz=11)
     y += 0.45
@@ -706,18 +684,6 @@ fill_table(
 # ---- LB probing：Public LB の変化から予測のずれを測る -------------------------
 table = next(sh for sh in s_probe.shapes if sh.has_table)
 table._element.getparent().remove(table._element)
-text_box(
-    s_probe,
-    0.34,
-    1.0,
-    9.32,
-    0.35,
-    [
-        "LB probing：Public LB の変化から、7〜9 月の予測が 0.33% 高いと分かり、test 全期間を下げた"
-    ],
-    13,
-    bold_first=True,
-)
 PROBE = [
     ["提出 10（10/20）", "Public LB 0.18595（L₀）"],
     [
@@ -733,7 +699,7 @@ PROBE = [
         "Public LB 0.18571（成約の重み・TE の平滑化も追加）",
     ],
 ]
-y = 1.55
+y = 1.2
 for i, lines in enumerate(PROBE):
     flow_box(s_probe, 0.34, y, 4.6, 0.62, lines, sz=11)
     y += 0.62
@@ -743,7 +709,7 @@ for i, lines in enumerate(PROBE):
 probe_body = placeholder(s_probe, 1)
 probe_body.left, probe_body.top, probe_body.width, probe_body.height = (
     Inches(5.2),
-    Inches(1.5),
+    Inches(1.15),
     Inches(4.46),
     Inches(3.85),
 )
@@ -853,6 +819,31 @@ fill_body(
     sizes=(14, 13.5, 13),
     line=115,
 )
+
+# ---- タイトル：結論を 1 文にし、テンプレートの見出しは左上に「項目：」として残す ----
+TITLES = [
+    (s_model, "13 モデルの stacking で㎡単価を予測する最終モデル"),
+    (s_story, "目的変数の見直しと stacking による改善"),
+    (s_team, "4 人の分担と、提出ファイルを再現できる仕組み"),
+    (s_score, "ほぼ同じ向きに動いた CV と Public LB"),
+    (s_score2, "後半ほど小さくなった、提出しなかった実験の改善幅"),
+    (
+        s_probe,
+        "LB probing による 7〜9 月の予測のずれの測定と補正",
+    ),
+    (s_ai, "実装と夜間の実験は AI、採否の判断は人という分担"),
+]
+for slide, title in TITLES:
+    heading = placeholder(slide, 0).text_frame.text
+    set_title(slide, title)
+    label = text_box(slide, 0.34, 0.1, 9.32, 0.28, [f"項目：{heading}"], 9.5)
+    for r in label._element.iter(qn("a:rPr")):
+        r.insert(
+            0,
+            etree.fromstring(
+                '<a:solidFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:srgbClr val="7F7F7F"/></a:solidFill>'
+            ),
+        )
 
 # ---- 各自の学んだこと・反省点（本人が書く）-------------------------------------
 for slide, name in zip(selves, MEMBERS, strict=True):
