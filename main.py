@@ -25,6 +25,22 @@ from src.models.lgbm import LGBM
 from src.models.linear_residual import LinearResidual
 from src.models.target_encoding import STATION_UNITS, TargetEncodedLGBM
 
+OOF_COLUMNS = [
+    "id",
+    TARGET,
+    "取引年",
+    "取引四半期",
+    "経過四半期",
+    "築年数",
+    "面積_数値",
+    "市区町村名",
+    "地区名",
+    "最寄駅：名称",
+    "駅距離_分",
+    "間取り",
+    "価格情報区分",
+]
+
 
 def _built_over_30(x: pd.DataFrame) -> np.ndarray:
     """築 30 年を超える行を選ぶ。
@@ -120,8 +136,13 @@ def main() -> None:
     test = df[~df["is_train"]].reset_index(drop=True)
 
     # 検証：時系列 CV（src/validation.py。チームの合意なしに変えない）
-    cv_models, cv_stack_inputs, cv_true_prices = _cross_val_predict(train, features)
-    _print_cv_scores(train, features, cv_models, cv_stack_inputs, cv_true_prices)
+    cv_models, cv_stack_inputs, cv_true_prices, cv_rows = _cross_val_predict(
+        train, features
+    )
+    base_prices, stacked_prices = _print_cv_scores(
+        train, features, cv_models, cv_stack_inputs, cv_true_prices
+    )
+    _save_oof(cv_models, cv_stack_inputs, cv_rows, base_prices, stacked_prices)
 
     # 本番：2 段目を全 fold の予測で学習し、全データで学習し直したモデルの test の予測を混ぜる
     stacker = ensemble.fit_stacker(cv_stack_inputs, cv_true_prices)
@@ -134,7 +155,12 @@ def main() -> None:
 
 def _cross_val_predict(
     train: pd.DataFrame, features: list[str]
-) -> tuple[list[list[Model]], list[pd.DataFrame], list[np.ndarray]]:
+) -> tuple[
+    list[list[Model]],
+    list[pd.DataFrame],
+    list[np.ndarray],
+    list[pd.DataFrame],
+]:
     """時系列 CV の fold ごとに、各モデル（MODELS）を学習データで学習し、検証データを予測する。
 
     戻り値は、本番の学習の材料になる。RMSLE は計算しない（_print_cv_scores で計算する）。
@@ -144,14 +170,16 @@ def _cross_val_predict(
         features: モデルに入れる列名の一覧。
 
     Returns:
-        次の 3 つ。2 段目の入力と正解は、本番の 2 段目（src/ensemble.py）の学習データになる。
+        次の 4 つ。2 段目の入力と正解は、本番の 2 段目（src/ensemble.py）の学習データになる。
         - モデル：[i][fold] は MODELS[i] をその fold で学習したもの。本番の木の本数などを決めるのに使う。
         - 2 段目の入力：fold ごとの、検証データに対する各モデルの予測。
         - 正解：fold ごとの、検証データの価格（円）。
+        - 検証行：OOF の分析に使う、検証データの必要な列。
     """
     folds = validation.time_series_folds(train)
     cv_stack_inputs: list[pd.DataFrame] = []
     cv_true_prices: list[np.ndarray] = []
+    cv_rows: list[pd.DataFrame] = []
     cv_models: list[list[Model]] = [[] for _ in MODELS]
     for tr_pos, va_pos in folds:
         tr, va = train.iloc[tr_pos], train.iloc[va_pos]
@@ -160,9 +188,10 @@ def _cross_val_predict(
         )
         cv_stack_inputs.append(va_stack_inputs)
         cv_true_prices.append(va[TARGET].to_numpy())
+        cv_rows.append(va[OOF_COLUMNS].reset_index(drop=True))
         for model_index, model in enumerate(fold_models):
             cv_models[model_index].append(model)
-    return cv_models, cv_stack_inputs, cv_true_prices
+    return cv_models, cv_stack_inputs, cv_true_prices, cv_rows
 
 
 def _print_cv_scores(
@@ -171,7 +200,7 @@ def _print_cv_scores(
     cv_models: list[list[Model]],
     cv_stack_inputs: list[pd.DataFrame],
     cv_true_prices: list[np.ndarray],
-) -> None:
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """fold ごとに 2 段目を学習して検証データの RMSLE を計算し、fold ごとの値と平均を表示する。
 
     表示するだけで、本番には何も渡さない。
@@ -191,6 +220,8 @@ def _print_cv_scores(
     scores: list[float] = []
     base_scores: list[float] = []
     stack_gains: list[float] = []
+    base_prices: list[np.ndarray] = []
+    stacked_prices: list[np.ndarray] = []
     for fold, (tr_pos, va_pos) in enumerate(folds):
         tr, va = train.iloc[tr_pos], train.iloc[va_pos]
         # 本番の 2 段目は test より前の期間の予測しか見られないので、CV でも後の期間の fold は使わない。
@@ -199,6 +230,7 @@ def _print_cv_scores(
         base_price = pipeline.blend_and_adjust(
             cv_stack_inputs[fold], None, va, tr, features
         )
+        base_prices.append(base_price)
         if earlier_folds:
             fold_stacker = ensemble.fit_stacker(
                 [cv_stack_inputs[k] for k in earlier_folds],
@@ -209,6 +241,7 @@ def _print_cv_scores(
             )
         else:
             price = base_price
+        stacked_prices.append(price)
         scores.append(validation.rmsle(va[TARGET], price))
         base_scores.append(validation.rmsle(va[TARGET], base_price))
         if earlier_folds:
@@ -230,6 +263,46 @@ def _print_cv_scores(
         f"2 段目の効果（2 段目がある {len(stack_gains)} fold の、2 段目あり − なしの平均）: "
         f"{np.mean(stack_gains):+.5f}"
     )
+    return base_prices, stacked_prices
+
+
+def _save_oof(
+    cv_models: list[list[Model]],
+    cv_stack_inputs: list[pd.DataFrame],
+    cv_rows: list[pd.DataFrame],
+    base_prices: list[np.ndarray],
+    stacked_prices: list[np.ndarray],
+) -> None:
+    """OOF 予測と検証行の情報を、分析用の圧縮 CSV に保存する。
+
+    Args:
+        cv_models: [model][fold] の順に並んだ、CV で学習したモデル。
+        cv_stack_inputs: fold ごとのstacking入力。モデル予測と土台との差を含む。
+        cv_rows: fold ごとの検証データから抜き出した分析用の列。
+        base_prices: fold ごとの2段目なしの予測価格。
+        stacked_prices: fold ごとの2段目ありの予測価格。
+    """
+    oof_parts: list[pd.DataFrame] = []
+    for fold, (stack_inputs, rows) in enumerate(
+        zip(cv_stack_inputs, cv_rows, strict=True)
+    ):
+        part = rows.copy()
+        part["fold"] = fold
+        part["先の四半期数"] = stack_inputs["先の四半期数"].to_numpy()
+        base_log = stack_inputs[ensemble.BASE].to_numpy()
+        for model_index, models_by_fold in enumerate(cv_models):
+            model_name = _describe(models_by_fold[fold])
+            model_log = base_log + stack_inputs[f"差{model_index}"].to_numpy()
+            part[f"予測_{model_name}"] = np.expm1(model_log)
+        part["予測_土台"] = base_prices[fold]
+        part["予測_2段目"] = stacked_prices[fold]
+        oof_parts.append(part)
+
+    SUBMISSION_DIR.mkdir(exist_ok=True)
+    oof = pd.concat(oof_parts, ignore_index=True)
+    path = SUBMISSION_DIR / "oof.csv.gz"
+    oof.to_csv(path, index=False, compression="gzip")
+    print(f"OOF 予測を保存しました: {path}（{len(oof)} 行）")
 
 
 def _print_importance(test_models: list[Model]) -> None:
@@ -259,6 +332,8 @@ def _describe(model: Model) -> str:
         names.append("総額")
     if model.subset is not None:
         names.append(model.subset.__name__)
+    if isinstance(model, TargetEncodedLGBM):
+        names.append("駅入り" if "駅" in model.units else "基本単位")
     return "・".join(names)
 
 
