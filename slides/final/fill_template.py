@@ -13,8 +13,11 @@ import sys
 
 from lxml import etree
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_MARKER_STYLE
 from pptx.oxml.ns import qn
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 EMU = 914400
 MEMBERS = ["南條 佑太", "大久保 翔", "藤瀬 太翼", "小林 麟太郎"]
@@ -73,7 +76,7 @@ def set_cell(tc, text, sz, b=False):
     tcPr.set("anchor", "ctr")
 
 
-def fill_table(frame, widths, rows, y, sz, head_sz, row_h):
+def fill_table(frame, widths, rows, y, sz, head_sz, row_h, head_h=0.3):
     """テンプレートの表の列幅を決め、行を足して埋める。見出し行の文言と罫線はテンプレートのまま。"""
     frame.left, frame.top = Inches(0.34), Inches(y)
     tbl = frame._element.find(".//" + qn("a:tbl"))
@@ -85,7 +88,7 @@ def fill_table(frame, widths, rows, y, sz, head_sz, row_h):
     head, blank = trs[0], copy.deepcopy(trs[1])
     for tr in trs[1:]:
         tbl.remove(tr)
-    head.set("h", str(int(0.3 * EMU)))
+    head.set("h", str(int(head_h * EMU)))
     for tc in head.findall(qn("a:tc")):
         txt = "".join(t.text or "" for t in tc.iter(qn("a:t")))
         set_cell(tc, txt, head_sz, True)
@@ -96,7 +99,7 @@ def fill_table(frame, widths, rows, y, sz, head_sz, row_h):
             set_cell(tc, text, sz)
         tbl.append(tr)
     frame.width = Inches(sum(widths))
-    frame.height = Inches(0.3 + row_h * len(rows))
+    frame.height = Inches(head_h + row_h * len(rows))
 
 
 def placeholder(slide, idx):
@@ -140,7 +143,7 @@ fill_body(
     [
         (
             0,
-            "最終評価に選んだ提出：10/21 の提出（Public 0.18571、手元の CV 0.18604 ※）",
+            "最終評価に選んだもの：10/21 の提出（Public LB 0.18571、CV 0.18604 ※）",
             True,
         ),
         (
@@ -171,22 +174,22 @@ fill_body(
         ),
         (
             2,
-            "2 段目の入力だけ：特定の行で学ぶ LightGBM 5 つ、ヘドニック回帰、TE 付きの LightGBM 3 つ",
+            "2 段目の入力にだけ使う：特定の行で学ぶ LightGBM 5 つ、ヘドニック回帰、TE 付きの LightGBM 3 つ",
             False,
         ),
         (
             1,
-            "学習データ：成約価格情報（不動産会社の成約データ。test の 67%）の行の重みを 1.5 倍にした",
+            "学習データ：成約価格情報の行の重みを 1.5 倍にした（test の 67% がこの種類の行）",
             False,
         ),
         (
             1,
-            "仕上げ：seed 3 つの予測を平均し、LB probing で測った予測の上振れ +0.33% の分だけ全体を下げた",
+            "仕上げ：seed 3 つの予測を平均し、予測が 0.33% 高めだった分だけ、全体を下げた",
             False,
         ),
         (
             2,
-            "上振れは Public（2025年7〜9月）で測ったので、Private の時期に当てはまるとは限らない",
+            "0.33% は 2025年7〜9月の予測だけ 1% 下げた提出（LB probing）で測ったので、Private の時期に当てはまるとは限らない",
             False,
         ),
         (
@@ -196,7 +199,7 @@ fill_body(
         ),
         (
             1,
-            "※ 10/19 から、2 段目は採点する fold より前の fold だけで学習した（最も古い fold は 2 段目なし）",
+            "※ 10/19 から、2 段目は採点する fold より前の fold だけで学習し、最も古い fold は 1 段目だけで採点した",
             False,
         ),
         (
@@ -226,12 +229,12 @@ fill_body(
         ),
         (
             1,
-            "stacking に移った：CV が 0.19174 から 0.18765 になり、採用した変更の中で最も大きく改善した",
+            "4 モデルの単純平均から stacking に変えた：以後は 2 段目の入力を足して改善を積み上げた",
             False,
         ),
         (
             1,
-            "後半は 2 段目の入力と TE の作り方を積み重ねた：1 回の改善は 0.0001〜0.0009 にとどまった",
+            "後半は 2 段目の入力と TE の改良を重ねた：1 回の改善は 0.0001〜0.0009 にとどまった",
             False,
         ),
         (0, "各自の取り組みと、最終モデルへの貢献", True),
@@ -247,7 +250,7 @@ fill_body(
         ),
         (
             1,
-            "藤瀬：実験の土台と時系列 CV、地区・駅の集計、stacking、LB probing を作った",
+            "藤瀬：実験の仕組みと時系列 CV、地区・駅の集計、stacking、LB probing を作った",
             False,
         ),
         (
@@ -258,39 +261,54 @@ fill_body(
         (0, "再現性", True),
         (
             1,
-            "seed は 42・1・2 に固定し、scripts の 2 つのスクリプトで提出ファイルまで作れる",
+            "seed は 42・1・2 に固定した：scripts/ の 2 本を実行すると提出ファイルまで作れる",
             False,
         ),
         (
             1,
-            "提出ファイルは probe/ に置いた：同じ PC で再実行すると提出ファイルが完全に一致した",
+            "提出ファイルは probe/ に置いた",
             False,
         ),
-        (1, "PC が違うと CV が 0.0001 ほど変わった", False),
+        (
+            1,
+            "同じ PC で再実行すると提出ファイルは完全に一致し、PC が違うと CV が 0.0001 ほど変わった",
+            False,
+        ),
     ],
     sizes=(14, 12.5, 12),
     line=100,
 )
 
-# ---- スコアの推移（提出したもの）-------------------------------------------
+# ---- スコアの推移（提出したもの）：折れ線グラフ ------------------------------
+# 提出の中身・手元の CV・Public LB。CV が None の提出は、CV を測っていないもの
+SUBMISSIONS = [
+    ("LightGBM のベースライン", 0.20674, 0.20542),
+    ("カテゴリの扱いと学習率の調整", 0.20360, 0.20222),
+    ("損失関数を Huber 損失に変更", 0.20004, 0.19914),
+    ("isotonic 回帰で予測を補正（やめた）", 0.19727, 0.20059),
+    ("目的変数から相場の上昇を切り離す", 0.19664, 0.19709),
+    ("主要駅までの距離、地区の緯度経度", 0.19553, 0.19561),
+    ("地区・駅の平均との差", 0.19358, 0.19321),
+    ("4 モデルの単純平均", 0.19174, 0.19251),
+    ("6 モデルの stacking、建物ごとの集計など", 0.18765, 0.18770),
+    ("13 モデル、TE、seed 平均", 0.18531, 0.18595),
+    ("LB probing：2025年7〜9月だけ 1% 下げた", None, 0.18604),
+    ("最終の提出 ※", 0.18604, 0.18571),
+]
 fill_body(
     placeholder(s_score, 1),
     [
         (
             0,
-            "提出したものを時系列に並べた（Private は 10/22 0:00 の公開後に記入）",
-            False,
+            "isotonic の回（4）と、CV の測り方を変えた最終（12）を除き、CV と Public LB は同じ向きに動いた",
+            True,
         ),
         (
             0,
-            "手元の検証スコアは、時系列 3 fold の CV の RMSLE（小さいほど良い）",
+            "※ 12 の CV（白抜きの点）は 10/19 に変えた測り方の値で、前の測り方より 0.0006〜0.0008 大きく出る",
             False,
         ),
-        (
-            0,
-            "※ は 10/19 に変えた CV の測り方の値：同じ構成でも、前の測り方より 0.0006〜0.0008 大きく出る",
-            False,
-        ),
+        (0, "Private は 10/22 0:00 の公開後に追記する", False),
     ],
     sizes=(11, 10.5, 10),
 )
@@ -298,56 +316,85 @@ desc = placeholder(s_score, 1)
 desc.top, desc.height = Inches(0.9), Inches(0.85)
 for el in desc._element.iter(qn("a:spcPts")):
     el.set("val", "0")
-HEAD_W = [3.3, 1.75, 0.72, 0.72, 2.83]
-fill_table(
-    next(sh for sh in s_score.shapes if sh.has_table),
-    HEAD_W,
-    [
-        ["LightGBM のベースライン", "0.20674", "0.20542", "", "基準"],
-        ["カテゴリの扱いと学習率の調整", "0.20360", "0.20222", "", "採用"],
-        ["損失関数を Huber 損失に変更", "0.20004", "0.19914", "", "採用"],
-        [
-            "isotonic 回帰で予測を後から補正",
-            "0.19727",
-            "0.20059",
-            "",
-            "CV は改善、LB は悪化し、やめた",
-        ],
-        ["目的変数から相場の上昇を切り離す", "0.19664", "0.19709", "", "採用"],
-        ["主要駅までの距離、地区の緯度経度", "0.19553", "0.19561", "", "採用"],
-        ["地区・駅の平均との差", "0.19358", "0.19321", "", "採用"],
-        ["4 モデルの単純平均", "0.19174", "0.19251", "", "stacking の元になった"],
-        ["6 モデルの stacking", "0.18765", "0.18770", "", "採用した中で最も大きい改善"],
-        ["13 モデル、TE、seed 平均", "0.18531", "0.18595", "", "採用"],
-        [
-            "LB probing：上の提出の 7〜9 月だけ 1% 下げた",
-            "—",
-            "0.18604",
-            "",
-            "予測の上振れ +0.33% を測った",
-        ],
-        [
-            "成約価格情報の重み、TE の平滑化、上振れの補正",
-            "0.18604 ※",
-            "0.18571",
-            "",
-            "最終の提出（CV は新しい測り方）",
-        ],
-    ],
-    y=1.8,
-    sz=9.5,
-    head_sz=10,
-    row_h=0.27,
-)
+table = next(sh for sh in s_score.shapes if sh.has_table)
+table._element.getparent().remove(table._element)
+
+data = CategoryChartData()
+data.categories = [str(i) for i in range(1, len(SUBMISSIONS) + 1)]
+data.add_series("CV", [cv for _, cv, _ in SUBMISSIONS], number_format="0.000")
+data.add_series("Public LB", [lb for _, _, lb in SUBMISSIONS], number_format="0.000")
+chart = s_score.shapes.add_chart(
+    XL_CHART_TYPE.LINE_MARKERS,
+    Inches(0.34),
+    Inches(1.8),
+    Inches(6.0),
+    Inches(3.55),
+    data,
+).chart
+chart.font.size = Pt(10)
+chart.has_legend = True
+chart.legend.position = XL_LEGEND_POSITION.TOP
+chart.legend.include_in_layout = False
+value_axis = chart.value_axis
+value_axis.minimum_scale, value_axis.maximum_scale = 0.184, 0.208
+value_axis.major_unit = 0.004
+value_axis.tick_labels.number_format = "0.000"
+value_axis.tick_labels.number_format_is_linked = False
+value_axis.major_gridlines.format.line.color.rgb = RGBColor(0xD9, 0xD9, 0xD9)
+value_axis.has_title = True
+value_axis.axis_title.text_frame.text = "RMSLE（小さいほど良い）"
+value_axis.axis_title.text_frame.paragraphs[0].runs[0].font.size = Pt(10)
+value_axis.axis_title.text_frame.paragraphs[0].runs[0].font.bold = False
+chart.category_axis.has_title = True
+chart.category_axis.axis_title.text_frame.text = "提出の順（右の番号）"
+chart.category_axis.axis_title.text_frame.paragraphs[0].runs[0].font.size = Pt(10)
+chart.category_axis.axis_title.text_frame.paragraphs[0].runs[0].font.bold = False
+# 2 本の線は、主役の Public LB を濃い色、手元の CV をグレーにして見分ける
+for series, color in zip(
+    chart.plots[0].series,
+    (RGBColor(0x99, 0x99, 0x99), RGBColor(0x1F, 0x1F, 0x1F)),
+    strict=True,
+):
+    series.smooth = False
+    series.format.line.color.rgb = color
+    series.format.line.width = Pt(2)
+    series.marker.style = XL_MARKER_STYLE.CIRCLE
+    series.marker.size = 6
+    series.marker.format.fill.solid()
+    series.marker.format.fill.fore_color.rgb = color
+    series.marker.format.line.color.rgb = color
+
+# 12 の CV は測り方が違い、前の点と比べられないので白抜きにする
+last_cv = chart.plots[0].series[0].points[len(SUBMISSIONS) - 1].marker
+last_cv.style = XL_MARKER_STYLE.CIRCLE
+last_cv.size = 7
+last_cv.format.fill.solid()
+last_cv.format.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+last_cv.format.line.color.rgb = RGBColor(0x99, 0x99, 0x99)
+last_cv.format.line.width = Pt(1.5)
+
+box = s_score.shapes.add_textbox(Inches(6.5), Inches(1.8), Inches(3.2), Inches(3.55))
+txBody = box._element.find(qn("p:txBody"))
+for p in txBody.findall(qn("a:p")):
+    txBody.remove(p)
+p = sub(txBody, "a:p")
+sub(sub(p, "a:pPr", marL=0, indent=0), "a:buNone")
+run(p, "提出の中身", 11.5, True)
+for name, _, _ in SUBMISSIONS:
+    p = sub(txBody, "a:p")
+    pPr = sub(p, "a:pPr", marL=274320, indent=-274320)
+    sub(sub(pPr, "a:spcBef"), "a:spcPts", val=100)
+    sub(pPr, "a:buFont", typeface="Arial")
+    sub(pPr, "a:buAutoNum", type="arabicPeriod")
+    run(p, name, 10.5)
 
 # ---- スコアの推移（CV だけで判断したもの）----------------------------------
 fill_body(
     placeholder(s_score2, 1),
     [
-        (0, "提出せずに CV だけで採否を決めた主な実験を時系列に並べた", False),
         (
             0,
-            "手元の検証スコアは「変える前の CV → 変えた後の CV」で、変える前はその時点の土台",
+            "提出せずに CV だけで採否を決めた主な実験：手元の検証スコアは「その時点の構成の CV → 変えた後の CV」",
             False,
         ),
         (
@@ -364,7 +411,7 @@ for el in desc._element.iter(qn("a:spcPts")):
     el.set("val", "0")
 fill_table(
     next(sh for sh in s_score2.shapes if sh.has_table),
-    HEAD_W,
+    [2.75, 2.6, 0.82, 0.9, 2.25],
     [
         ["㎡単価を目的変数にする", "0.20004 → 0.19845", "—", "—", "採用"],
         [
@@ -372,55 +419,52 @@ fill_table(
             "0.19727 → 0.19736",
             "—",
             "—",
-            "不採用、一部屋あたりの面積の元になった",
+            "不採用",
         ],
-        ["CatBoost の学習率・深さの見直し", "0.18960 → 0.18944", "—", "—", "採用"],
         ["同じ建物とみなした物件ごとの集計", "0.18944 → 0.18872", "—", "—", "採用"],
         [
-            "一部の行だけのモデルを 2 段目の入力に",
-            "0.18944 → 0.18871",
+            "2 段目の入力に 5 モデルを足す",
+            "0.18765 → 0.18680",
             "—",
             "—",
-            "採用",
+            "採用、TE 付き 1 つを含む",
         ],
-        ["2 段目の入力に 5 モデルを足す", "0.18765 → 0.18680", "—", "—", "採用"],
-        ["2 段目の損失を二乗誤差にする", "0.18765 → 0.18699", "—", "—", "採用"],
         ["一部屋あたりの面積", "0.18599 → 0.18548", "—", "—", "採用"],
         [
-            "TE 付きのモデルを 2 つ足す（11 → 13 モデル）",
+            "TE 付きのモデルを 2 つ足す",
             "0.18628 → 0.18614 ※",
             "—",
             "—",
-            "採用",
+            "採用、11 → 13 モデル",
         ],
-        ["成約価格情報の重みを 1.5 倍にする", "0.18622 → 0.18606 ※", "—", "—", "採用"],
-        ["TE を階層的に平滑化する", "0.18622 → 0.18611 ※", "—", "—", "採用"],
+        [
+            "成約価格情報の重みと TE の平滑化",
+            "0.18622 → 0.18606・0.18611 ※",
+            "—",
+            "—",
+            "採用、大久保の PC の値",
+        ],
         [
             "相場から外れた取引を学習から外す",
             "0.0002〜0.0018 悪化",
             "—",
             "—",
-            "不採用、テスト期間にも外れ値がある",
+            "不採用、test にも外れ値",
         ],
         [
             "近くの地価公示の地点の価格",
             "改善なし",
             "—",
             "—",
-            "不採用、地区より細かい住所がない",
+            "不採用、細かい住所がない",
         ],
-        [
-            "特徴量 9 つ、2 段目の設定、カテゴリの組み合わせ",
-            "差 0.0001 以内",
-            "—",
-            "—",
-            "不採用",
-        ],
+        ["特徴量 9 つ、2 段目の設定など", "差 0.0001 以内", "—", "—", "不採用"],
     ],
-    y=1.8,
-    sz=9.5,
-    head_sz=10,
-    row_h=0.235,
+    y=1.55,
+    sz=11.5,
+    head_sz=13.5,
+    row_h=0.29,
+    head_h=0.5,
 )
 
 # ---- AI の使い方 -------------------------------------------------------------
@@ -430,15 +474,15 @@ fill_body(
         (0, "使った AI ツールと任せたこと", True),
         (
             1,
-            "Claude Code：コード・PR の本文・レビューを任せ、夜間は複数のエージェントに実験を分けて任せた",
+            "Claude Code：コード・PR の本文・レビューを任せ、夜間は実験を複数のエージェントに分担させた",
             False,
         ),
         (1, "Fable（藤瀬）：残った誤差の分析と、LB probing の設計", False),
-        (1, "Gemini（大久保）：夜間にまとめた PR の検証", False),
+        (1, "Gemini（大久保）：AI が夜間にまとめた PR を検証した", False),
         (0, "AI が誤っていたこと", True),
         (
             1,
-            "安い物件の分類器で CV が良くなった：2 段目の入力の作り方による漏れで、入力を直すと改善が消えた",
+            "AI は安い物件の分類器で CV が良くなったと報告した：2 段目の入力に正解の情報が漏れていて、入力を直すと改善が消えた",
             False,
         ),
         (
@@ -450,7 +494,7 @@ fill_body(
         (1, "採用：stacking、TE 付きのモデル、seed 平均、LB probing", False),
         (
             1,
-            "却下：相場から外れた取引を外す案は、3 つのしきい値すべてで CV が悪化した",
+            "却下：相場から外れた取引を外す案（3 つのしきい値すべてで CV が悪化）",
             False,
         ),
         (0, "AI への指示ファイルに書いて効いたこと", True),
@@ -472,7 +516,7 @@ fill_body(
         (1, "PR と Issue で実験を記録し、CV と LB の対応を最後まで残せた", False),
         (
             1,
-            "isotonic の回を除き、CV と LB の差は 0.0008 以内に収まり、CV で採否を決められた",
+            "isotonic の回を除き、CV と Public LB の差は 0.0014 以内に収まり、CV で採否を決められた",
             False,
         ),
         (1, "効かなかった実験も、不採用として理由と一緒に記録した", False),
@@ -486,7 +530,11 @@ fill_body(
     [
         (0, "話し合いの材料：全員で振り返ってから書き直す", True),
         (1, "計算が 1 台の PC に集まり、試せる量が限られた", False),
-        (1, "最も効いた stacking に移ったのが、締め切りの 3 日前だった", False),
+        (
+            1,
+            "後半の改善の土台になった stacking に移ったのが、締め切りの 3 日前だった",
+            False,
+        ),
         (1, "PC によって CV が 0.0001 ほど違い、小さな改善を比べにくかった", False),
         (1, "PR を積み重ねたため、どのブランチから始めるかが分かりにくかった", False),
     ],
