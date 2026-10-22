@@ -77,7 +77,7 @@ def fill_body(shape, items, sizes=(12, 11, 10.5), line=None):
         run(p, text, sizes[lvl], b)
 
 
-def set_cell(tc, text, sz, b=False):
+def set_cell(tc, text, sz, b=False, mar=0.03):
     txBody = tc.find(qn("a:txBody"))
     for p in txBody.findall(qn("a:p")):
         txBody.remove(p)
@@ -88,11 +88,11 @@ def set_cell(tc, text, sz, b=False):
         run(p, line, sz, b, FACE)
     tcPr = tc.find(qn("a:tcPr"))
     for k in ("marT", "marB"):
-        tcPr.set(k, str(int(0.03 * EMU)))
+        tcPr.set(k, str(int(mar * EMU)))
     tcPr.set("anchor", "ctr")
 
 
-def fill_table(frame, widths, rows, y, sz, head_sz, row_h, head_h=0.3):
+def fill_table(frame, widths, rows, y, sz, head_sz, row_h, head_h=0.3, mar=0.03):
     """テンプレートの表の列幅を決め、行を足して埋める。見出し行の文言と罫線はテンプレートのまま。"""
     frame.left, frame.top = Inches(0.34), Inches(y)
     tbl = frame._element.find(".//" + qn("a:tbl"))
@@ -111,12 +111,12 @@ def fill_table(frame, widths, rows, y, sz, head_sz, row_h, head_h=0.3):
         txt = txt.replace("試したこと（", "試したこと\n（").replace(
             "、ずれ", "、\nずれ"
         )
-        set_cell(tc, txt, head_sz, True)
+        set_cell(tc, txt, head_sz, True, mar)
     for cells in rows:
         tr = copy.deepcopy(blank)
         tr.set("h", str(int(row_h * EMU)))
         for tc, text in zip(tr.findall(qn("a:tc")), cells, strict=True):
-            set_cell(tc, text, sz)
+            set_cell(tc, text, sz, mar=mar)
         tbl.append(tr)
     frame.width = Inches(sum(widths))
     frame.height = Inches(head_h + row_h * len(rows))
@@ -231,10 +231,14 @@ body.left, body.top, body.width, body.height = (
 fill_body(
     body,
     [
-        (0, "目的変数：log(㎡単価) − 相場の指数（log）", False),
-        (1, "test は 2025年7月〜2026年3月の取引", False),
-        (1, "test の時期の指数は、直近 4 四半期の傾きで延ばした", False),
-        (0, "前処理と特徴量：次のページにまとめた", False),
+        (0, "目的変数：log(㎡単価) − log(相場の伸び)", False),
+        (1, "相場の伸び：同条件の価格を 2025年4〜6月と比べた倍率", False),
+        (2, "市区町村を㎡単価で 5 つに分け、グループごとに作る", False),
+        (2, "条件：価格情報区分・地区・面積帯・築年数帯", False),
+        (2, "四半期ごとに、条件ごとの倍率を平均する", False),
+        (1, "引く理由：決定木は学習期間より先の値上がりを表せない", False),
+        (1, "test の時期の伸びは、直近 4 四半期の傾きで延ばす", False),
+        (1, "予測を exp して伸びを掛け、面積を掛けて総額にする", False),
         (
             0,
             "行の重み付け：成約価格情報の行を 1.5 倍に重くした",
@@ -247,28 +251,32 @@ fill_body(
             False,
         ),
         (1, "各 fold は、それより前で学習し直後の 3 四半期を当てる", False),
-        (1, "※ 10/19 から CV では 2 段目を前の fold だけで学習", False),
+        (1, "相場の伸びも、fold ごとに学習データだけで作る", False),
+        (1, "※ 10/19 に、2 段目が検証の正解を見るリークを直した", False),
     ],
-    sizes=(12.5, 11.5, 11.5),
+    sizes=(12.5, 11.5, 11),
     line=100,
 )
+# 目的変数はモデルの土台なので、ほかの項目より大きく書く
+for r in body.text_frame.paragraphs[0].runs:
+    r.font.size = Pt(15)
 for el in body._element.iter(qn("a:spcPts")):
     if el.get("val") == "600":
-        el.set("val", "500")
+        el.set("val", "300")
 
 text_box(
     s_model,
     0.34,
-    4.3,
+    4.72,
     4.75,
-    0.85,
+    0.75,
     [
         "注：stacking は、複数モデルの予測を別のモデルで組み合わせること",
-        "注：TE（target encoding）の中身は次のページ",
+        "注：前処理・特徴量と TE（target encoding）の中身は次のページ",
         "データ：国土交通省 不動産情報ライブラリの取引価格・",
         "　 成約価格情報（東京都の中古マンション等）を講義用に加工",
     ],
-    10,
+    9,
 )
 
 X0, W = 5.3, 4.36
@@ -290,7 +298,7 @@ steps = [
         4.26,
         0.5,
         [
-            "7〜9 月の予測が 0.33% 高いと分かり、test 全期間を下げる",
+            "7〜9 月の予測が 0.33% 高いと推定し、test 全期間の予測を下げる",
             "LB probing：Public LB の変化からずれを測った（8 ページ）",
         ],
     ),
@@ -436,11 +444,11 @@ text_box(
 )
 STORY = [
     (
-        "LightGBM のベースラインで、カテゴリの扱いと学習率を調整し、損失を Huber 損失に変えた",
+        "LightGBM のベースラインで、カテゴリの扱いと学習率を調整し、損失関数を Huber 損失に変えた",
         "提出 1 → 3：Public LB 0.20542 → 0.19914",
     ),
     (
-        "目的変数を総額から㎡単価に変え、相場の指数（log）を引いた：決定木は学習期間より先の値上がりを表せないため",
+        "目的変数を総額から㎡単価に変え、相場の伸び（log）を引いた：決定木は学習期間より先の値上がりを表せないため",
         "提出 3 → 5：Public LB 0.19914 → 0.19709",
     ),
     (
@@ -475,7 +483,7 @@ text_box(
     0.5,
     [
         "試してやめたもの：isotonic 回帰による予測の補正（提出 4：CV は 0.20004 → 0.19727 に良くなったが、Public LB は 0.20059 に悪化）",
-        "　 あとで分かった Private LB では 0.21876 → 0.21251 と良くなっていた（Public は 7〜9 月、Private は 10〜3 月の行で採点）",
+        "　 あとで分かった Private LB では 0.21876 → 0.21251 と良くなっていた（8 ページ：Public は 7〜9 月、Private は 10〜3 月の行で採点）",
     ],
     10.5,
 )
@@ -492,7 +500,7 @@ fill_body(
         ),
         (
             1,
-            "大久保：相場の指数を引く目的変数、成約価格情報の重み、TE の階層的な平滑化を入れた",
+            "大久保：相場の伸びを引く目的変数、成約価格情報の重み、TE の階層的な平滑化を入れた",
             False,
         ),
         (
@@ -553,7 +561,7 @@ SUBMISSIONS = [
     ("カテゴリの扱いと学習率の調整", 0.20360, 0.20222),
     ("損失関数を Huber 損失に変更", 0.20004, 0.19914),
     ("isotonic 回帰で予測を補正（やめた）", 0.19727, 0.20059),
-    ("目的変数を㎡単価にし、相場の指数を引く", 0.19664, 0.19709),
+    ("目的変数を㎡単価にし、相場の伸びを引く", 0.19664, 0.19709),
     ("主要駅までの距離、地区の緯度経度", 0.19553, 0.19561),
     ("地区・駅の平均（築年数など）との差", 0.19358, 0.19321),
     ("4 モデルの単純平均", 0.19174, 0.19251),
@@ -567,22 +575,22 @@ fill_body(
     [
         (
             0,
-            "4（isotonic）は Public だけ向きが逆、12 は測り方が違うので除くと、CV と Public LB は同じ向きに動いた",
-            True,
-        ),
-        (
-            0,
-            "※ 12 の CV（白抜き）は 10/19 から 2 段目を前の fold だけで学習した値で、0.0006〜0.0008 大きく出る",
+            "4 を除くと、CV と Public LB は同じ向きに動いた（4 は Public だけ逆）",
             False,
         ),
         (
             0,
-            "10 を ※ の測り方で測ると 0.18614（seed 42）",
+            "※ 12 の CV（白抜き）だけリークを直した後の値：直した後の CV は 0.0006〜0.0008 大きい",
             False,
         ),
         (
             0,
-            "Private LB（破線）は一度も上がらず、12 が 0.19786：5 以降は Public より 0.012 ほど大きい",
+            "同じ測り方（seed 42）では 10 → 12 が 0.18614 → 0.18619：seed の揺れ（0.0003 ほど）の範囲",
+            False,
+        ),
+        (
+            0,
+            "Private LB（破線）は一度も悪化せず、12 が 0.19786：Public より先の 10〜3 月なので 0.012 ほど大きい",
             False,
         ),
     ],
@@ -597,13 +605,17 @@ table._element.getparent().remove(table._element)
 
 data = CategoryChartData()
 data.categories = [str(i) for i in range(1, len(SUBMISSIONS) + 1)]
-data.add_series("CV", [cv for _, cv, _ in SUBMISSIONS], number_format="0.000")
+# 12 の CV だけリークを直した後の値で、前の点と比べられないので別の系列にする
+cvs = [cv for _, cv, _ in SUBMISSIONS]
+data.add_series("CV", [*cvs[:-1], None], number_format="0.000")
 data.add_series("Public LB", [lb for _, _, lb in SUBMISSIONS], number_format="0.000")
-# Private LB は最終の提出（12）の値だけ分かっている
 data.add_series(
     "Private LB",
     PRIVATE,
     number_format="0.000",
+)
+data.add_series(
+    "CV（リーク修正後）", [*[None] * (len(cvs) - 1), cvs[-1]], number_format="0.000"
 )
 chart = s_score.shapes.add_chart(
     XL_CHART_TYPE.LINE_MARKERS,
@@ -647,13 +659,14 @@ for series, color in zip(
     series.marker.format.fill.fore_color.rgb = color
     series.marker.format.line.color.rgb = color
 
-# 12 の CV は測り方が違い、前の点と比べられないので白抜きにする
-last_cv = chart.plots[0].series[0].points[len(SUBMISSIONS) - 1].marker
-last_cv.style = XL_MARKER_STYLE.CIRCLE
-last_cv.size = 7
-last_cv.format.fill.solid()
-last_cv.format.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-last_cv.format.line.color.rgb = RGBColor(0x99, 0x99, 0x99)
+fixed_cv = chart.plots[0].series[3]
+fixed_cv.format.line.fill.background()
+fixed_cv.marker.style = XL_MARKER_STYLE.CIRCLE
+fixed_cv.marker.size = 7
+fixed_cv.marker.format.fill.solid()
+fixed_cv.marker.format.fill.fore_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+fixed_cv.marker.format.line.color.rgb = RGBColor(0x99, 0x99, 0x99)
+fixed_cv.marker.format.line.width = Pt(1.5)
 
 # 9〜12 は点が近くて読み分けにくいので、Public LB の 10 と 12 だけ値を添える
 for i in (9, 11):
@@ -667,7 +680,6 @@ for i in (9, 11):
     )
     label.position = XL_LABEL_POSITION.ABOVE
     label.font.size = Pt(9)
-last_cv.format.line.width = Pt(1.5)
 
 private = chart.plots[0].series[2]
 private.smooth = False
@@ -716,7 +728,7 @@ fill_body(
         ),
         (
             0,
-            "※ は 10/19 から 2 段目を前の fold だけで学習した CV：前の測り方より 0.0006〜0.0008 大きく出る",
+            "※ はリークを直した後の CV：直した後の CV は 0.0006〜0.0008 大きい",
             False,
         ),
         (
@@ -800,11 +812,13 @@ fill_table(
             "不採用、どれも効果なし",
         ],
     ],
-    y=2.12,
-    sz=11.5,
-    head_sz=13.5,
-    row_h=0.25,
+    # 11 行をスライドの下端までに収めるため、上の箇条の直下から始め、セルの上下の余白を詰める
+    y=2.0,
+    sz=11,
+    head_sz=13,
+    row_h=0.26,
     head_h=0.5,
+    mar=0.015,
 )
 
 # ---- LB probing：Public LB の変化から予測のずれを測る -------------------------
@@ -845,17 +859,16 @@ fill_body(
         (0, "置いた仮定", True),
         (1, "Public LB は test の 7〜9 月の行だけで採点される", False),
         (2, "Public は test の約 37%、7〜9 月の行は 37.2%", False),
+        (2, "仮定どおり、11 と 10 の Private LB は同じ 0.19828", False),
         (1, "10〜3 月の予測も、7〜9 月と同じだけ高い", False),
-        (1, "結果：11 と 10 の Private LB が同じ 0.19828", False),
-        (2, "仮定どおり、Private に 7〜9 月はない", False),
         (0, "式の読み方", True),
         (1, "下げた量 c が 2m より大きいと LB は悪くなる", False),
         (2, "提出 11 の悪化の幅から m を求められる", False),
         (0, "注意", True),
         (1, "Private LB は 0.19786（Public より 0.012 悪い）", False),
         (2, "10 の 0.19828 より 0.0004 良い", False),
-        (2, "補正で LB が動くのは最大 0.0036", False),
-        (2, "差の大半は補正以外による", False),
+        (2, "ずれが 0.33% なら、補正で良くなるのは約 0.00003", False),
+        (2, "0.0004 の大半は、成約の重みと TE の平滑化による", False),
     ],
     sizes=(13, 12, 11.5),
     line=110,
@@ -953,7 +966,7 @@ fill_body(
         ),
         (
             2,
-            "isotonic で CV と Public が食い違ったとき、Public は 1 四半期先だけを見ていると割り引けなかった",
+            "isotonic は CV で良くなったのに、Public だけを見てやめた（Private では良くなっていた）",
             False,
         ),
     ],
@@ -968,7 +981,7 @@ TITLES = [
     (s_story, "目的変数の見直しと stacking による改善"),
     (s_team, "4 人の分担と、提出ファイルを再現できる仕組み"),
     (s_score, "ほぼ同じ向きに動いた CV と Public LB"),
-    (s_score2, "後半ほど小さくなった、提出しなかった実験の改善幅"),
+    (s_score2, "後半ほど小さくなった、単独では提出しなかった実験の改善幅"),
     (
         s_probe,
         "LB probing による 7〜9 月の予測のずれの測定と補正",
