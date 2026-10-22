@@ -1,6 +1,6 @@
 # condominium-resale-price-pred
 
-東京都の中古マンション等の取引価格（総額）を予測するモデル。東京大学「機械学習応用」（2026 年度）の演習コンペ [`utokyo-mlapp-2026-ex1`](https://www.kaggle.com/competitions/utokyo-mlapp-2026-ex1) に、グループ D として取り組んだ。
+東京都の中古マンション等の取引価格（総額）を予測するモデル。東京大学「機械学習応用」（2026 年度）の演習コンペ [`utokyo-mlapp-2026-ex1`](https://www.kaggle.com/competitions/utokyo-mlapp-2026-ex1) 
 
 ## 課題
 
